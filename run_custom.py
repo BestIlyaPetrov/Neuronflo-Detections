@@ -3,6 +3,7 @@ import torch
 import supervision as sv
 import argparse
 import numpy as np
+import operator
 
 
 # # Load YOLOv5 model
@@ -48,6 +49,7 @@ def video_to_frames(input_loc, output_loc):
 
     zone = sv.PolygonZone(polygon=ZONE_POLYGON, frame_resolution_wh=tuple(args.webcam_resolution))
     zone_annotator = sv.PolygonZoneAnnotator(zone=zone,color=sv.Color.blue())
+    zone_count=0
     # Start converting the video
     while True:
         # Extract the frame
@@ -60,30 +62,16 @@ def video_to_frames(input_loc, output_loc):
 
         frame = box_annotator.annotate(scene=frame, detections=detections)
         zone.trigger(detections=detections)
+
         frame = zone_annotator.annotate(scene=frame)
 
-        # Закомментированная часть кода сохраняет frame  при первом прохождение через рамку,
-        # но т.к сейчас модель работает снедочетами и "мигает"  в начале, то результат не совсем корректный
-        # Не закомментированная часть кода тоже сохраняет 2 изображения, но за счет того что одно из
-        # изображений перезаписывается каждый раз
-        
-        # if(zone.current_count==0):
-        #     count = 0
-        #     count = count + 1
-        # elif(zone.current_count==count):
-        #     count = count - 1
-        #     if(detections.class_id == 1):
-        #         cv2.imwrite(output_loc + "/mask.jpg" , frame)
-        #     elif(detections.class_id == 0):
-        #         cv2.imwrite(output_loc + "/nomask.jpg" , frame)
-
-        if(zone.current_count==1):
+        if(operator.and_(not(zone_count),zone.current_count)):
             if(detections.class_id == 1):
                 cv2.imwrite(output_loc + "/mask.jpg" , frame)
             elif(detections.class_id == 0):
                 cv2.imwrite(output_loc + "/nomask.jpg" , frame)
 
-
+        zone_count = zone.current_count
         #cv2.imshow("bestmaskv5.pt",frame)
         if (cv2.waitKey(30)==27):
             break
