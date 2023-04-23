@@ -18,7 +18,9 @@ model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,so
 # Open video capture
 #cap = cv2.VideoCapture(1)  # Use 0 for default camera or provide video file path
 # Open video capture
-VIDEO_PATH = './video/horizontal_coming_no_mask.MOV'
+# VIDEO_PATH = './video/horizontal_coming_no_mask.MOV'
+VIDEO_PATH = '../../Videos_Images/Hallway/h_no_mask.MOV'
+path_out = '../../Videos_Images/Hallway/results'
 path_out='./frame'
 
 ZONE_POLYGON = np.array([
