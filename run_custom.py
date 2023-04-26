@@ -19,14 +19,14 @@ model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,so
 #cap = cv2.VideoCapture(1)  # Use 0 for default camera or provide video file path
 # Open video capture
 # VIDEO_PATH = './video/horizontal_coming_no_mask.MOV'
-VIDEO_PATH = '../../Videos_Images/Hallway/h_no_mask.MOV'
-path_out = '../../Videos_Images/Hallway/results'
-path_out='./frame'
+VIDEO_PATH = '../video_test/h_mask.MOV'
+path_out = '../video_test/results'
+# path_out='./frame'
 
 ZONE_POLYGON = np.array([
     [500,120],
-    [900,120],
-    [900,500],
+    [800,120],
+    [800,500],
     [500,500]
 ])
 
@@ -56,6 +56,10 @@ def video_to_frames(input_loc, output_loc):
     while True:
         # Extract the frame
         ret, frame = cap.read()
+        if not ret: break
+
+
+
         results = model(frame, size=1280)
         detections = sv.Detections.from_yolov5(results)
 
