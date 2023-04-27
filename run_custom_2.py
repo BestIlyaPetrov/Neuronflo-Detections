@@ -14,7 +14,7 @@ import argparse
 import operator
 
 auth_token = ""
-url = 'http://192.168.0.17:6969/'
+url = 'http://192.168.0.17:6971/'
 
 
 CENTER_COORDINATES = (50,50) #Center of the detection region as percentage of FRAME_SIZE
@@ -158,7 +158,10 @@ def main():
         capture_index = int(devices[0][-1])
 
     # Open video capture
+    input_res= (1920,1080)
     cap = cv2.VideoCapture(capture_index)  # Use 0 for default camera or provide video file path
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, input_res[0])
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, input_res[1])
 
     if not cap.isOpened():
         raise ValueError(f"Could not open video device with index {capture_index}")
@@ -176,7 +179,8 @@ def main():
         # cap = cv2.VideoCapture(input_loc)
 
         #Get frame size
-        frame_size = tuple(args.webcam_resolution)
+        # frame_size = tuple(args.webcam_resolution)
+        frame_size=input_res
         # Calculate detection region
         zone_polygon = region_dimensions(frame_size, CENTER_COORDINATES, WIDTH, HEIGHT)
 
@@ -199,7 +203,7 @@ def main():
 
 
             ##INTEGRATING ANYA"S CODE##
-            results = model(frame, size=1280)
+            results = model(frame)
             detections = sv.Detections.from_yolov5(results)
 
             # Convert pandas DataFrame to a Python dictionary
@@ -254,42 +258,7 @@ def main():
             if (cv2.waitKey(30)==27):
                 break
 
-            ## END IF INTEGRATION ##
-
-
-
-            # # Inference
-            # results = model(frame)
-
-            # # Print results to console
-            # # print(results.pandas().xyxy[0])
-
-            # # Convert pandas DataFrame to a Python dictionary
-            # result_dict = results.pandas().xyxy[0].to_dict()
-
-            # # Convert dictionary to JSON string
-            # result_json = json.dumps(result_dict)
-
-            # # Print the JSON string
-            # print(result_json)
-
-            # #ADJUST LOGIC HERE - RIGHT NOW IT SENDS A PIC EVERY 10 SEC
-            # elapsed_time = time.time() - start_time
-            # if elapsed_time > save_interval:
-            #     # Encode the image as bytes to send to server
-            #     success, encoded_image = cv2.imencode('.jpg', frame)    
-            #     if success:
-            #         # Convert the encoded image to a byte array
-            #         image_bytes = bytearray(encoded_image)
-            #         # You can now use image_data like you did with f.read() 
-            #         # Send the image to the server
-            #         sendImageToServer(image_bytes, result_json)
-            #         start_time = time.time()
-            #     else:
-            #         raise ValueError("Could not encode the frame as a JPEG image")
-
-            # You can now use image_bytes like you did with f.read()
-
+            ## END OF INTEGRATION ##
            
 
     except KeyboardInterrupt:
