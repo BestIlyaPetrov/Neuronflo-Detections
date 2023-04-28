@@ -18,8 +18,8 @@ url = 'http://192.168.0.17:6971/'
 
 
 CENTER_COORDINATES = (50,50) #Center of the detection region as percentage of FRAME_SIZE
-WIDTH = 20 #% of the screen 
-HEIGHT = 80 #% of the screen 
+WIDTH = 100 #% of the screen 
+HEIGHT = 30 #% of the screen 
 
 
 
@@ -158,7 +158,7 @@ def main():
         capture_index = int(devices[0][-1])
 
     # Open video capture
-    input_res= (1920,1080)
+    input_res= (640,480)
     cap = cv2.VideoCapture(capture_index)  # Use 0 for default camera or provide video file path
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, input_res[0])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, input_res[1])
@@ -225,7 +225,8 @@ def main():
             
 
 
-            if(operator.and_(not(zone_count),zone.current_count)):
+            # if(operator.and_(not(zone_count),zone.current_count)):
+            if zone.current_count > zone_count:
 
                 #Get data ready
                 compliant=False
@@ -246,16 +247,23 @@ def main():
                     image_bytes = bytearray(encoded_image)
                     # You can now use image_data like you did with f.read() 
                     # Send the image to the server
-                    sendImageToServer(image_bytes, data)
-                    start_time = time.time()
+                    # sendImageToServer(image_bytes, data)
+                    print()
+                    print("########### DETECTION MADE #############")
+                    print(result_json)
+                    print("########### END OF DETECTION #############")
+                    print()
                 else:
                     raise ValueError("Could not encode the frame as a JPEG image")
 
 
 
             zone_count = zone.current_count
-            #cv2.imshow("bestmaskv5.pt",frame)
-            if (cv2.waitKey(30)==27):
+            cv2.imshow("bestmaskv5.pt",frame)
+            if cv2.waitKey(1) == ord('q'):
+                cap.release()
+                cv2.destroyAllWindows()
+                exit(1)
                 break
 
             ## END OF INTEGRATION ##
