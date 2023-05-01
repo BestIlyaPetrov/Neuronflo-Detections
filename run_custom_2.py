@@ -17,9 +17,9 @@ auth_token = ""
 url = 'http://192.168.0.17:6971/'
 
 
-CENTER_COORDINATES = (50,50) #Center of the detection region as percentage of FRAME_SIZE
-WIDTH = 100 #% of the screen 
-HEIGHT = 30 #% of the screen 
+CENTER_COORDINATES = (10,50) #Center of the detection region as percentage of FRAME_SIZE
+WIDTH = 40 #% of the screen 
+HEIGHT = 100 #% of the screen 
 
 
 
@@ -28,7 +28,7 @@ def parse_argument() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="YOLOv5 live")
     parser.add_argument(
         "--webcam-resolution",
-        default=[640, 480],
+        default=[1920, 1080],
         nargs=2,
         type=int
     )
@@ -158,7 +158,7 @@ def main():
         capture_index = int(devices[0][-1])
 
     # Open video capture
-    input_res= (640,480)
+    input_res= (1920,1080)
     cap = cv2.VideoCapture(capture_index)  # Use 0 for default camera or provide video file path
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, input_res[0])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, input_res[1])
@@ -246,8 +246,9 @@ def main():
                     # Convert the encoded image to a byte array
                     image_bytes = bytearray(encoded_image)
                     # You can now use image_data like you did with f.read() 
+
                     # Send the image to the server
-                    # sendImageToServer(image_bytes, data)
+                    sendImageToServer(image_bytes, data)
                     print()
                     print("########### DETECTION MADE #############")
                     print(result_json)
@@ -259,7 +260,7 @@ def main():
 
 
             zone_count = zone.current_count
-            cv2.imshow("bestmaskv5.pt",frame)
+            # cv2.imshow("bestmaskv5.pt",frame)
             if cv2.waitKey(1) == ord('q'):
                 cap.release()
                 cv2.destroyAllWindows()
