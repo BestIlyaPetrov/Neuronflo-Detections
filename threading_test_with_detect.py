@@ -13,17 +13,61 @@ import traceback
 from utils.torch_utils import select_device
 from models.common import DetectMultiBackend
 
+
+# VIDEO RESOLUTION
+video_res = [640, 480]
+
 # NMS paparms
-conf_thres =0.5
+conf_thres = 0.5
 iou_thres = 0.7
 agnostic_nms= True
 classes = None ## all classes are detected
 
-CENTER_COORDINATES = (10,50) #Center of the detection region as percentage of FRAME_SIZE
-WIDTH = 40 #% of the screen 
-HEIGHT = 100 #% of the screen 
+#Image Annotation Params
+border_thickness = 15
+
+#Region for goggles
+w1 = 30 
+h1 = 100
+x1 = 20
+y1 = 50
+
+#Region for shoes
+w2 = 30 
+h2 = 100
+x2 = 20
+y2 = 50
 
 
+CENTER_COORDINATES = [] #Center of the detection region as percentage of FRAME_SIZE
+WIDTH = []#% of the screen 
+HEIGHT = [] #% of the screen 
+
+CENTER_COORDINATES.append((x1 /2,y1)) #Center of the detection region as percentage of FRAME_SIZE
+WIDTH.append(w1 /2) #% of the 1st screen 
+HEIGHT.append(h1) #% of the 1st screen 
+
+CENTER_COORDINATES.append((50+( x2 /2),y2)) #Center of the detection region as percentage of FRAME_SIZE
+WIDTH.append(w2 /2) #% of the 2nd screen 
+HEIGHT.append(h2) #% of the 2nd screen 
+
+
+def draw_border(frame, compliant, border_width=5):
+    """
+    Draw a red or green border around a given frame.
+    """
+    if compliant:
+        color = (0, 255, 0)  # green
+    else:
+        color = (0, 0, 255)  # red
+
+    height, width, _ = frame.shape
+    bordered_frame = cv2.copyMakeBorder(
+        frame, border_width, border_width, border_width, border_width,
+        cv2.BORDER_CONSTANT, value=color
+    )
+    return bordered_frame
+    # return bordered_frame[border_width : height + border_width, border_width : width + border_width]
 
 
 def region_dimensions(frame_size, center, width, height):
@@ -47,9 +91,9 @@ def region_dimensions(frame_size, center, width, height):
     return zone_polygon
 
 class vStream:
-    def __init__(self, src, width, height):
-        self.width = width
-        self.height = height
+    def __init__(self, src, resolution):
+        self.width = resolution[0]
+        self.height = resolution[1]
         
         self.capture=cv2.VideoCapture(src)
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
@@ -71,28 +115,63 @@ class vStream:
     #     self.result_json = json.dumps(self.result_dict)
     #     return self.result_json
 
-model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,source='local', device='0')
+
 # device = select_device('0')
 # model = DetectMultiBackend('bestmaskv5.pt', device=device)
-w = 640
-h = 480
-cam1 = vStream(0,w,h)
-cam2 = vStream(1,w,h)
+
+#Initialize the cameras 
+cam1 = vStream(0,video_res)
+cam2 = vStream(1,video_res)
+
+#Load the model
+model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,source='local', device='0')
 
 frame_size=(2*w,h) #since we are horizonatlly stacking the two images
 # Calculate detection region
-zone_polygon = region_dimensions(frame_size, CENTER_COORDINATES, WIDTH, HEIGHT)
+zone_polygons = []
+zone_polygons.append(region_dimensions(frame_size, CENTER_COORDINATES[0], WIDTH[0], HEIGHT[0]))
+zone_polygons.append(region_dimensions(frame_size, CENTER_COORDINATES[1], WIDTH[1], HEIGHT[1]))
 
-zone = sv.PolygonZone(polygon=zone_polygon, frame_resolution_wh=frame_size)
-zone_annotator = sv.PolygonZoneAnnotator(zone=zone,color=sv.Color.blue())
+colors = sv.ColorPalette.default()
+zones = [
+    sv.PolygonZone(
+        polygon=polygon, 
+        frame_resolution_wh=frame_size
+    )
+    for polygon
+    in zone_polygons
+]
+zone_annotators = [
+    sv.PolygonZoneAnnotator(
+        zone=zone, 
+        color=colors.by_idx(index+2), 
+        thickness=4,
+        text_thickness=2,
+        text_scale=2
+    )
+    for index, zone
+    in enumerate(zones)
+]
+# box_annotators = [
+#     sv.BoxAnnotator(
+#         color=colors.by_idx(index), 
+#         thickness=4, 
+#         text_thickness=4, 
+#         text_scale=2
+#         )
+#     for index
+#     in range(len(zone_polygons))
+# ]
+
+# zone = sv.PolygonZone(polygon=zone_polygon, frame_resolution_wh=frame_size)
+# zone_annotator = sv.PolygonZoneAnnotator(zone=zone,color=sv.Color.blue()) 
+box_annotator = sv.BoxAnnotator(thickness=4, text_thickness=4, text_scale=2)
+
 zone_count=0
 
 while True:
     try:
         
-        # print("CAM1:",cam1.detect())
-        # print("CAM2:",cam2.detect())
-
         myFrame1 = cam1.getFrame()
         myFrame2 = cam2.getFrame()
         # cv2.imshow('Cam1', myFrame1)
@@ -108,17 +187,26 @@ while True:
         #Apply NMS to remove double detections
         detections = detections.with_nms(threshold=0.5, class_agnostic=True) #apply NMS to detections
 
+         #Get data ready
+        compliant=False
+        if(detections.class_id.any() == 0):
+            compliant=False #no_mask
+        elif(detections.class_id.all() == 1):
+            compliant=True #mask
 
-        # annotate
-        box_annotator = sv.BoxAnnotator(thickness=4, text_thickness=4, text_scale=2)
+        bordered_frame = draw_border(myFrame2, compliant, border_thickness)
+        #Annotate
+        for zone, zone_annotator in zip(zones, zone_annotators):
+            zone.trigger(detections=detections)
+            frame = box_annotator.annotate(scene=frame, detections=detections)
+            frame = zone_annotator.annotate(scene=frame)
+        # frame = box_annotator.annotate(scene=frame, detections=detections)
 
-        frame = box_annotator.annotate(scene=frame, detections=detections)
+        # zone.trigger(detections=detections)
 
-        zone.trigger(detections=detections)
-
-        frame = zone_annotator.annotate(scene=frame)
+        # frame = zone_annotator.annotate(scene=frame)
         #Display frame
-        cv2.imshow('ComboCam', frame)
+        cv2.imshow('ComboCam', bordered_frame)
 
         # result_dict = results.pandas().xyxy[0].to_dict()
         # result_json = json.dumps(result_dict)
@@ -136,17 +224,3 @@ while True:
         break
 
 
-# while True:
-#     cap = cv2.VideoCapture(0)
-    
-#     try:
-#         ret,frame = cap.read()
-#         cv2.imshow('Cam2', frame)
-#     except:
-#         print('bitch')
-
-#     if cv2.waitKey(1) == ord('q'):
-#         cap.release()
-#         cv2.destroyAllWindows()
-#         exit(1)
-#         break

@@ -136,8 +136,7 @@ def main():
 
     # # Load YOLOv5 model
     #model = torch.hub.load("ultralytics/yolov5", "yolov5s")
-    #Load custom YOLOv5 model from file
-    model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,source='local', device='0')
+ 
 
 
     # Find all available video devices
@@ -166,7 +165,8 @@ def main():
     if not cap.isOpened():
         raise ValueError(f"Could not open video device with index {capture_index}")
 
-
+   #Load custom YOLOv5 model from file
+    model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,source='local', device='0')
 
     # MAIN EXECUTION LOOP
     # save_interval = 10  # Time interval in seconds to save a frame
@@ -231,9 +231,9 @@ def main():
                 #Get data ready
                 compliant=False
                 if(detections.class_id.any() == 0):
-                    compliant=False #mask
-                elif(detections.class_id.all() == 1):
                     compliant=False #no_mask
+                elif(detections.class_id.all() == 1):
+                    compliant=True #mask
 
                 data = {
                         'zone_name': '1',
@@ -260,7 +260,7 @@ def main():
 
 
             zone_count = zone.current_count
-            # cv2.imshow("bestmaskv5.pt",frame)
+            cv2.imshow("bestmaskv5.pt",frame)
             if cv2.waitKey(1) == ord('q'):
                 cap.release()
                 cv2.destroyAllWindows()
