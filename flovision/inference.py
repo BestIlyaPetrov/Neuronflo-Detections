@@ -73,51 +73,6 @@ class InferenceSystem:
                 # Apply NMS to remove double detections
                 detections = detections.with_nms(threshold=0.5, class_agnostic=True)  # apply NMS to detections
 
-                # Get data ready
-                compliant = False
-                if (detections.class_id.any() == 0):
-                    compliant = False  # no_mask
-                elif (detections.class_id.all() == 1):
-                    compliant = True  # mask
-                bordered_frame = draw_border(myFrame2, compliant, self.border_thickness)
-
-                data = {
-                        'zone_name': '1',
-                        'crossing_type': 'coming',
-                        'compliant' : str(compliant)
-                    }
-
-                # JSON RAW DATA
-                # Convert pandas DataFrame to a Python dictionary
-                result_dict = results.pandas().xyxy[0].to_dict()
-                # Convert dictionary to JSON string
-                result_json = json.dumps(result_dict)
-                # Print the JSON string
-                print()
-                print("RESULTS: ", results)
-                print("RESULTS JSON: ", result_json)
-                print()
-
-                # #convert image to be ready to be sent
-                # success, encoded_image = cv2.imencode('.jpg', bordered_frame)    
-                # if success:
-                #     # Convert the encoded image to a byte array
-                #     image_bytes = bytearray(encoded_image)
-                #     # You can now use image_data like you did with f.read() 
-
-                #     # Send the image to the server
-                #     sendImageToServer(image_bytes, data)
-
-                #     print()
-                #     print("########### DETECTION MADE #############")
-                #     print(result_json)
-                #     print("########### END OF DETECTION #############")
-                #     print()
-                # else:
-                #     raise ValueError("Could not encode the frame as a JPEG image")
-
-
-
                 # Annotate
                 for zone, zone_annotator in zip(self.zones, self.zone_annotators):
                     zone.trigger(detections=detections)
@@ -125,10 +80,60 @@ class InferenceSystem:
                     frame = zone_annotator.annotate(scene=frame)
 
 
+                if self.zones[0].current_count > zone_count:
+
+                    # Get data ready
+                    compliant = False
+                    if (detections.class_id.any() == 0):
+                        compliant = False  # no_mask
+                    elif (detections.class_id.all() == 1):
+                        compliant = True  # mask
+                    bordered_frame = draw_border(myFrame2, compliant, self.border_thickness)
+
+                    data = {
+                            'zone_name': '1',
+                            'crossing_type': 'coming',
+                            'compliant' : str(compliant)
+                        }
+
+                    # JSON RAW DATA
+                    # Convert pandas DataFrame to a Python dictionary
+                    result_dict = results.pandas().xyxy[0].to_dict()
+                    # Convert dictionary to JSON string
+                    result_json = json.dumps(result_dict)
+                    # Print the JSON string
+                    print()
+                    print("RESULTS: ", results)
+                    print("RESULTS JSON: ", result_json)
+                    print()
+
+                    #convert image to be ready to be sent
+                    success, encoded_image = cv2.imencode('.jpg', bordered_frame)    
+                    if success:
+                        # Convert the encoded image to a byte array
+                        image_bytes = bytearray(encoded_image)
+                        # You can now use image_data like you did with f.read() 
+
+                        # Send the image to the server
+                        sendImageToServer(image_bytes, data)
+
+                        print()
+                        print("########### DETECTION MADE #############")
+                        print(result_json)
+                        print("########### END OF DETECTION #############")
+                        print()
+                    else:
+                        raise ValueError("Could not encode the frame as a JPEG image")
 
 
+
+                
+
+
+
+                zone_count = self.zones[0].current_count
                 # Display frame
-                cv2.imshow('ComboCam', bordered_frame)
+                # cv2.imshow('ComboCam', bordered_frame)
 
             except Exception as e:
                 print('frame unavailable', e)
