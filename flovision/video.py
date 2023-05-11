@@ -42,7 +42,19 @@ def region_dimensions(frame_size, center, width, height):
 
     return zone_polygon
 
+def variance_of_laplacian(image):
+	# compute the Laplacian of the image and then return the focus
+	# measure, which is simply the variance of the Laplacian
+	return cv2.Laplacian(image, cv2.CV_64F).var()
 
+def least_blurry_image_indx(frame_list):
+    blur_val_list = []
+    for frame in frame_list:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        fm = variance_of_laplacian(gray)
+        blur_val_list.append(fm)
+    print("BLUR VALS:", blur_val_list)
+    return np.array(blur_val_list).argmax()
 
 
 class vStream:
@@ -53,16 +65,25 @@ class vStream:
         self.capture=cv2.VideoCapture(src)
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        # success = self.capture.set(cv2.CAP_PROP_FPS, 30.0)   
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon=True
         self.thread.start()
+        self.src = src
     def update(self):
         while True:
             _,self.frame = self.capture.read()
-            self.frame2 = cv2.resize(self.frame, (self.width, self.height))
+            # print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
+            # self.frame2 = cv2.resize(self.frame, (self.width, self.height))
+            self.new_frame_available = True
+
 
     def getFrame(self):
-        return self.frame2
+        if self.new_frame_available:
+            self.new_frame_available = False
+            return (True, self.frame)
+        else:
+            return (False, self.frame)
 
     # def detect(self):
     #     self.results = self.model(self.getFrame())

@@ -5,33 +5,31 @@ from flovision import inference, comms, video
 video_res = [640, 480]
 
 # NMS paparms
-conf_thres = 0.5
+# conf_thres = 0.5
 iou_thres = 0.7
 agnostic_nms= True
-classes = None ## all classes are detected
+# classes = None ## all classes are detected
 
 #Image Annotation Params
 border_thickness = 15
 
 #Region for goggles
 w1 = 30 
-h1 = 100
-x1 = 20
-y1 = 50
+h1 = 30
+x1 = 50
+y1 = 70
 
 #Region for shoes
-w2 = 30 
-h2 = 100
-x2 = 20
+w2 = 80
+h2 = 30
+x2 = 50
 y2 = 50
 
 def print_parameters():
     print("VIDEO RESOLUTION: {} x {}".format(video_res[0], video_res[1]))
     print("NMS PARAMETERS:")
-    print("  Confidence threshold: {}".format(conf_thres))
     print("  IOU threshold: {}".format(iou_thres))
     print("  Agnostic NMS: {}".format(agnostic_nms))
-    print("  Classes: {}".format(classes))
     print("IMAGE ANNOTATION PARAMETERS:")
     print("  Border thickness: {}".format(border_thickness))
     print("REGIONS FOR DETECTION:")
@@ -65,10 +63,10 @@ def main():
         CENTER_COORDINATES,
         WIDTH,
         HEIGHT,
-        border_thickness
+        border_thickness,
     )
     #Run the model
-    inference_obj.run()
+    inference_obj.run(iou_thres, agnostic_nms)
 
 
 if __name__ == "__main__":

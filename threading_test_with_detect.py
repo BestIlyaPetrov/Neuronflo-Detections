@@ -171,7 +171,8 @@ zone_count=0
 
 while True:
     try:
-        
+        if not cam1.new_frame_available or not cam2.new_frame_available:
+            continue
         myFrame1 = cam1.getFrame()
         myFrame2 = cam2.getFrame()
         # cv2.imshow('Cam1', myFrame1)
