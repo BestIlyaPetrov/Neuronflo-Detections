@@ -8,17 +8,41 @@ import json
 import supervision as sv
 import traceback
 import collections
+from pathlib import Path
 
 
 from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx
 from .comms import sendImageToServer
+from .utils import get_highest_index, IPListener
+from zeroconf import ServiceBrowser, Zeroconf
+
 
 
 class InferenceSystem:
-    def __init__(self, model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness):
-        self.initialize(model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness)
+    def __init__(self, model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save):
+        self.initialize(model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save)
 
-    def initialize(self, model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness):
+    def initialize(self, model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save):
+
+        #Find the IP of the windows server
+        target_service_name = "neuronflo-server._workstation._tcp.local."
+        listener = IPListener(target_service_name)
+        zeroconf = Zeroconf()
+
+        try:
+            browser = ServiceBrowser(zeroconf, "_workstation._tcp.local.", listener)
+            while True:
+                if listener.found_ip is not None:
+                    break
+        except KeyboardInterrupt:
+            pass
+        finally:
+            zeroconf.close()
+
+        # Continue with more lines of code after the IP address has been found
+        print(f"IP address found: {listener.found_ip}, continuing with the rest of the script...")
+
+
         # Initialize the cameras
         self.cam1 = vStream(0, video_res)
         self.cam2 = vStream(1, video_res)
@@ -29,6 +53,8 @@ class InferenceSystem:
         # Set frame params
         self.frame_size = (video_res[0] * 2, video_res[1])  # since we are horizontally stacking the two images
         self.border_thickness = border_thickness
+        self.display = display
+        self.save = save
         # Calculate detection region
         zone_polygons = []
         for i in range(len(CENTER_COORDINATES)):
@@ -58,7 +84,39 @@ class InferenceSystem:
 
         self.box_annotator = sv.BoxAnnotator(thickness=2, text_thickness=2, text_scale=1)
 
+    def stop(self):
+        self.cam1.capture.release()
+        self.cam2.capture.release()
+        cv2.destroyAllWindows()
+        exit(1)
+
+
+    def save_frames(self, frame_arr):
+        try:
+            # Path of the directory
+            dir_path = Path.cwd().parent / 'saved_frames'
+            # Create the directories if it doesn't exist
+            goggle_path = dir_path / 'goggles'
+            shoe_path = dir_path / 'shoes'
+            goggle_path.mkdir(parents=True, exist_ok=True)
+            shoe_path.mkdir(parents=True, exist_ok=True)
+            count = get_highest_index(goggle_path) + 1 
+            for img in frame_arr[0]:
+                cv2.imwrite(str(goggle_path / f"goggles_img_{count:04d}.jpg"), img)
+                count += 1 
+            count = get_highest_index(shoe_path) + 1
+            for img in frame_arr[1]:
+                cv2.imwrite(str(shoe_path / f"shoes_img_{count:04d}.jpg"), img)
+                count += 1
+            
+
+        except Exception as e:
+            print("Couldn't save the frames.")
+            print(e)
+            traceback.print_exc()
+
     def run(self, iou_thres, agnostic_nms):
+        print("Inference successfully launched")
         zone_count = 0
         n = 5 # num_consecutive_frames that we want to window (to reduce jitter)
         detections_array = []
@@ -107,7 +165,7 @@ class InferenceSystem:
 
 
                 # TRIGGER EVENT
-                if self.zones[0].current_count > zone_count:
+                if self.zones[0].current_count > zone_count and detection_trigger_flag==False:
                     detection_trigger_flag = True
 
                     # JSON RAW DATA
@@ -191,7 +249,7 @@ class InferenceSystem:
                             # You can now use image_data like you did with f.read() 
 
                             # Send the image to the server
-                            sendImageToServer(image_bytes, data)
+                            sendImageToServer(image_bytes, data, IP_address=listener.found_ip)
 
                             print()
                             print("########### DETECTION MADE #############")
@@ -201,22 +259,18 @@ class InferenceSystem:
                         else:
                             raise ValueError("Could not encode the frame as a JPEG image")
 
-
+                        if self.save:
+                            self.save_frames([frame1_array, frame2_array])
                         #Finally clear detections array
                         detections_array = []
                         frame1_array = []
                         frame2_array = []
 
-
-
-                        
-                    
-
-
-
                 zone_count = self.zones[0].current_count
                 # Display frame
-                cv2.imshow('ComboCam', frame)
+                if self.display:
+                    cv2.imshow('ComboCam', frame)
+
                   # calculate and print the FPS
                 # end_time = time.time()
                 # fps = 1.0 / (end_time - start_time)
@@ -231,8 +285,5 @@ class InferenceSystem:
                 traceback.print_exc()
 
             if cv2.waitKey(1) == ord('q'):
-                self.cam1.capture.release()
-                self.cam2.capture.release()
-                cv2.destroyAllWindows()
-                exit(1)
+                self.stop()
                

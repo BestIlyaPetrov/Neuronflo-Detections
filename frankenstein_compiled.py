@@ -1,5 +1,6 @@
 from flovision import inference, comms, video
-
+import cv2
+import argparse
 
 # VIDEO RESOLUTION
 video_res = [640, 480]
@@ -37,7 +38,10 @@ def print_parameters():
     print("  Shoes: x={}, y={}, w={}, h={}".format(x2, y2, w2, h2))
 
 
-def main():
+def main(
+    display_video = False,
+    save_frames = False
+    ):
 
     print_parameters()
 
@@ -55,19 +59,34 @@ def main():
     HEIGHT.append(h2) #% of the 2nd screen 
 
 
-    
-    # Initialize the model
-    inference_obj= inference.InferenceSystem(
-        'bestmaskv5.pt',
-        video_res,
-        CENTER_COORDINATES,
-        WIDTH,
-        HEIGHT,
-        border_thickness,
-    )
-    #Run the model
-    inference_obj.run(iou_thres, agnostic_nms)
+    try:
+        # Initialize the model
+        inference_obj= inference.InferenceSystem(
+            'bestmaskv5.pt',
+            video_res,
+            CENTER_COORDINATES,
+            WIDTH,
+            HEIGHT,
+            border_thickness,
+            display_video,
+            save_frames
 
+        )
+        #Run the model
+        inference_obj.run(iou_thres, agnostic_nms)
+    except KeyboardInterrupt:
+        print()
+        print("Keyboard interrupt. Exiting peacefully")
+        inference_obj.stop()
+
+def parse_options():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--display-video', action='store_true', help='show video feed')
+    parser.add_argument('--save-frames', action='store_true', help='save detected frames')
+    options = parser.parse_args()
+    return options
 
 if __name__ == "__main__":
-    main()
+    opt = parse_options()
+    main(**vars(opt))
+    

@@ -6,11 +6,11 @@ import hashlib
 
 
 auth_token = ""
-url = 'http://192.168.0.17:6971/'
+# url = 'http://192.168.0.17:6971/'
 
 
 
-def authenticate(identifier):
+def authenticate(identifier, url):
 
     #INITIAL AUTHENTICATION STAGE
     # identifier = "jetson01"
@@ -43,10 +43,11 @@ def authenticate(identifier):
 
 
 
-def sendImageToServer(image_bytes, image_data):
+def sendImageToServer(image_bytes, image_data, IP_address):
     global auth_token
+    url = f'http://{IP_address}:80/'
     if auth_token == "":
-        auth_token, csrf_token = authenticate(identifier = "jetson01")
+        auth_token, csrf_token = authenticate(identifier = "jetson01", url=url)
         print("New auth token is: ", auth_token)
     else: 
         print("Auth token already is: ", auth_token)

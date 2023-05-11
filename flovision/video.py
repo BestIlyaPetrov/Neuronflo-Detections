@@ -53,7 +53,7 @@ def least_blurry_image_indx(frame_list):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         fm = variance_of_laplacian(gray)
         blur_val_list.append(fm)
-    print("BLUR VALS:", blur_val_list)
+    # print("BLUR VALS:", blur_val_list)
     return np.array(blur_val_list).argmax()
 
 
