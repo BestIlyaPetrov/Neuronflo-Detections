@@ -40,7 +40,7 @@ def main():
                 # cv2.imshow('Cam1', myFrame1)
                 # cv2.imshow('Cam2', myFrame2)
                 myFrame3 = np.hstack((myFrame1,myFrame2))
-                # cv2.imshow('ComboCam', myFrame1)
+                cv2.imshow('ComboCam', myFrame1)
                 # cv2.moveWindow('ComboCam',0,0)
             except Exception as e:
                 print('frame unavailable')
