@@ -15,8 +15,10 @@ class vStream:
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon=True
         self.thread.start()
+        self.src = src
     def update(self):
         while True:
+            print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
             ret,self.frame = self.capture.read()
             if ret:
                 self.frame2 = cv2.resize(self.frame, (self.width, self.height))
