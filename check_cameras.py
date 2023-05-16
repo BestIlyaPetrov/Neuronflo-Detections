@@ -28,20 +28,20 @@ class vStream:
 
 def main():
     try:
-        w = 320
-        h = 240
+        w = 640
+        h = 480
         cam1 = vStream(0,w,h)
-        cam2 = vStream(1,w,h)
+        # cam2 = vStream(1,w,h)
 
 
         while True:
             try:
                 myFrame1 = cam1.getFrame()
-                myFrame2 = cam2.getFrame()
+                # myFrame2 = cam2.getFrame()
                 # cv2.imshow('Cam1', myFrame1)
                 # cv2.imshow('Cam2', myFrame2)
-                myFrame3 = np.hstack((myFrame1,myFrame2))
-                cv2.imshow('ComboCam', myFrame3)
+                # myFrame3 = np.hstack((myFrame1,myFrame2))
+                cv2.imshow('ComboCam', myFrame1)
                 # cv2.moveWindow('ComboCam',0,0)
             except Exception as e:
                 print('frame unavailable')
