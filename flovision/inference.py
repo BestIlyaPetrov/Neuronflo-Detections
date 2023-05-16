@@ -14,6 +14,7 @@ from pathlib import Path
 from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx
 from .comms import sendImageToServer
 from .utils import get_highest_index, IPListener
+from .peripherals import ping_alarm
 from zeroconf import ServiceBrowser, Zeroconf
 
 
@@ -41,7 +42,7 @@ class InferenceSystem:
 
         # Continue with more lines of code after the IP address has been found
         print(f"IP address found: {listener.found_ip}, continuing with the rest of the script...")
-
+        self.server_IP = listener.found_ip
 
         # Initialize the cameras
         self.cam1 = vStream(0, video_res)
@@ -118,7 +119,7 @@ class InferenceSystem:
     def run(self, iou_thres, agnostic_nms):
         print("Inference successfully launched")
         zone_count = 0
-        n = 5 # num_consecutive_frames that we want to window (to reduce jitter)
+        n = 3 # num_consecutive_frames that we want to window (to reduce jitter)
         detections_array = []
         frame1_array = []
         frame2_array = []
@@ -249,7 +250,7 @@ class InferenceSystem:
                             # You can now use image_data like you did with f.read() 
 
                             # Send the image to the server
-                            sendImageToServer(image_bytes, data, IP_address=listener.found_ip)
+                            sendImageToServer(image_bytes, data, IP_address=self.server_IP)
 
                             print()
                             print("########### DETECTION MADE #############")
