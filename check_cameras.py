@@ -58,7 +58,7 @@ def main():
         print()
         print("Keyboard interrupt. Exiting peacefully")
         cam1.capture.release()
-        cam2.capture.release()
+        # cam2.capture.release()
         cv2.destroyAllWindows()
         exit(1)
 
