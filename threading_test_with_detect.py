@@ -207,7 +207,7 @@ while True:
 
         # frame = zone_annotator.annotate(scene=frame)
         #Display frame
-        cv2.imshow('ComboCam', bordered_frame)
+        cv2.imshow('ComboCam', frame)
 
         # result_dict = results.pandas().xyxy[0].to_dict()
         # result_json = json.dumps(result_dict)
