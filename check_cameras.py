@@ -20,6 +20,10 @@ class vStream:
         while True:
             # print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
             _,self.frame = self.capture.read()
+            try:
+                print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
+            except:
+                print("Couldn't read fps on src #",src)
             self.frame2 = cv2.resize(self.frame, (self.width, self.height))
 
     def getFrame(self):
