@@ -2,7 +2,7 @@ import Jetson.GPIO as GPIO
 import sys
 import time
 
-def ping_alarm(cycle_t = , iterations = 2, pin=29):
+def ping_alarm(cycle_t = 1, iterations = 2, pin=29):
     
     half_cycle = cycle_t /2 
     # Set the pin numbering scheme

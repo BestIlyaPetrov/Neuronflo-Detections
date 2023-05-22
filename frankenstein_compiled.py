@@ -40,7 +40,8 @@ def print_parameters():
 
 def main(
     display_video = False,
-    save_frames = False
+    save_frames = False,
+    new_boxes = False
     ):
 
     print_parameters()
@@ -62,14 +63,15 @@ def main(
     try:
         # Initialize the model
         inference_obj= inference.InferenceSystem(
-            'bestmaskv5.pt',
+            'tenneco_goggles.pt',
             video_res,
             CENTER_COORDINATES,
             WIDTH,
             HEIGHT,
             border_thickness,
             display_video,
-            save_frames
+            save_frames,
+            new_boxes
 
         )
         #Run the model
@@ -83,6 +85,8 @@ def parse_options():
     parser = argparse.ArgumentParser()
     parser.add_argument('--display-video', action='store_true', help='show video feed')
     parser.add_argument('--save-frames', action='store_true', help='save detected frames')
+    parser.add_argument('--new-boxes', action='store_true', help='create new bounding boxes')
+
     options = parser.parse_args()
     return options
 

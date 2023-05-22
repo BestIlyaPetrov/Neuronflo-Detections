@@ -70,6 +70,8 @@ class vStream:
         self.thread.daemon=True
         self.thread.start()
         self.src = src
+        self.new_frame_available = False
+        self.frame = None
     def update(self):
         while True:
             _,self.frame = self.capture.read()
@@ -79,6 +81,8 @@ class vStream:
 
 
     def getFrame(self):
+        if self.frame is None:
+            return (False, self.frame)
         if self.new_frame_available:
             self.new_frame_available = False
             return (True, self.frame)
