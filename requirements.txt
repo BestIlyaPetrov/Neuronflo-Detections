@@ -47,3 +47,6 @@ seaborn>=0.11.0
 # pycocotools>=2.0.6  # COCO mAP
 # roboflow
 # ultralytics  # HUB https://hub.ultralytics.com
+
+# Utils
+zeroconf==0.62.0
