@@ -33,7 +33,7 @@ class InferenceSystem:
 
         try:
             print("Looking for server IP...")
-            browser = ServiceBrowser(zeroconf, "_workstation._tcp", listener)
+            browser = ServiceBrowser(zeroconf, "_workstation._tcp.local.", listener)
             while True:
                 if listener.found_ip is not None:
                     break
