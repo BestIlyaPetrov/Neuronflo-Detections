@@ -14,6 +14,10 @@ class IPListener:
 
     def add_service(self, zeroconf, type, name):
         info = zeroconf.get_service_info(type, name)
+        if info:
+            addresses = [socket.inet_ntoa(addr) for addr in info.addresses]
+            print(f"Discovered service: {name}, IP addresses: {', '.join(addresses)}")
+            
         if info and name == self.target_service_name:
             address = socket.inet_ntoa(info.addresses[0])
             self.found_ip = address
