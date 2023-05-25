@@ -95,7 +95,7 @@ def main(
             if key == ord('r') and not is_recording:
                 is_recording = True
                 timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-                output_file = f"/recorded_videos/recorded_video_{timestamp}.mp4"
+                output_file = f"recorded_videos/recorded_video_{timestamp}.mp4"
                 cam.start_recording(output_file)
                 print("Started recording...")
 
