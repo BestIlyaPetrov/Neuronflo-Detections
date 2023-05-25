@@ -21,10 +21,10 @@ from zeroconf import ServiceBrowser, Zeroconf
 
 
 class InferenceSystem:
-    def __init__(self, model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save, bboxes):
-        self.initialize(model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save, bboxes)
+    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes):
+        self.initialize(model_name, video_res, border_thickness, display, save, bboxes)
 
-    def initialize(self, model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save, bboxes):
+    def initialize(self, model_name, video_res, border_thickness, display, save, bboxes):
 
         #Find the IP of the windows server
         target_service_name = "neuronflo-server._workstation._tcp.local."
@@ -65,6 +65,7 @@ class InferenceSystem:
         self.cam1 = vStream(cap_index[0], video_res)
         self.cam2 = vStream(cap_index[1], video_res)
 
+        # Define the detection regions
         zone_polygons = []
         if bboxes:
             coordinates = create_bounding_boxes(self.cam1)
@@ -91,10 +92,7 @@ class InferenceSystem:
         self.border_thickness = border_thickness
         self.display = display
         self.save = save
-        # Calculate detection region
-        # zone_polygons = []
-        # for i in range(len(CENTER_COORDINATES)):
-        #     zone_polygons.append(region_dimensions(self.frame_size, CENTER_COORDINATES[i], WIDTH[i], HEIGHT[i]))
+ 
 
         # set the zones
         colors = sv.ColorPalette.default()
@@ -121,6 +119,7 @@ class InferenceSystem:
         self.box_annotator = sv.BoxAnnotator(thickness=2, text_thickness=2, text_scale=1)
 
     def stop(self):
+        print("Stopping detections and releasing cameras")
         self.cam1.capture.release()
         self.cam2.capture.release()
         cv2.destroyAllWindows()
