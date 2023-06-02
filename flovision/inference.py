@@ -277,7 +277,7 @@ class InferenceSystem:
                         # NOW SEND IMAGE TO THE SERVER WITH DATA
                         #convert image to be ready to be sent
                         
-                        success, encoded_image = cv2.imencode('.jpg', bordered_frame)    
+                        success, encoded_image = cv2.imencode('.jpg', bordered_frame1)    
                         if success:
                             # Convert the encoded image to a byte array
                             image_bytes = bytearray(encoded_image)
