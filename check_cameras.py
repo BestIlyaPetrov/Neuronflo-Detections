@@ -68,19 +68,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# while True:
-#     cap = cv2.VideoCapture(0)
-    
-#     try:
-#         ret,frame = cap.read()
-#         cv2.imshow('Cam2', frame)
-#     except:
-#         print('bitch')
-
-#     if cv2.waitKey(1) == ord('q'):
-#         cap.release()
-#         cv2.destroyAllWindows()
-#         exit(1)
-#         break
