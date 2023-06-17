@@ -32,7 +32,7 @@ class EntranceInferenceSystem:
         # Initialize the cameras
         self.cams = []
         self.cams.append(vStream(cap_index[0], video_res))
-        self.cams.append(vStream(cap_index[1], video_res))
+        # self.cams.append(vStream(cap_index[1], video_res))
 
         # Define the detection regions
         zone_polygons = []
@@ -54,7 +54,10 @@ class EntranceInferenceSystem:
 
 
         # Load the model
-        self.model = torch.hub.load('./', 'custom', path=model_name, force_reload=True, source='local', device='0')
+        # self.model = torch.hub.load('./', 'custom', path=model_name, force_reload=True, source='local', device='0')
+        self.model = model = torch.hub.load("ultralytics/yolov5", "yolov5s", device='0')  # or yolov5n - yolov5x6, custom
+        self.model.classes = [0]  # Set the desired class
+
 
         # Set frame params
         self.frame_size = (video_res[0], video_res[1])  
@@ -118,7 +121,10 @@ class EntranceInferenceSystem:
         frame1_array = []
         frame2_array = []
         cnt = 0
+        n_pics = 20
         detection_trigger_flag = False
+        trigger_start = 0
+        delta_T = 5 #seconds
         # fps_list = []
         while True:
             try:
@@ -129,11 +135,12 @@ class EntranceInferenceSystem:
                 new_frame1, myFrame1 = self.cams[0].getFrame()
                 if new_frame1 == False:
                     continue
-                new_frame2, myFrame2 = self.cams[1].getFrame()
-                if new_frame2 == False:
-                    continue
+                # new_frame2, myFrame2 = self.cams[1].getFrame()
+                # if new_frame2 == False:
+                #     continue
 
-                frame = np.hstack((myFrame1, myFrame2))
+                # frame = np.hstack((myFrame1, myFrame2))
+                frame = myFrame1.copy()
 
                 # Run Inference
                 results = self.model(frame)
@@ -152,119 +159,139 @@ class EntranceInferenceSystem:
                     frame = self.box_annotator.annotate(scene=frame, detections=detections)
                     frame = zone_annotator.annotate(scene=frame)
 
+                
+
                 # Split into two sets of detections by bounding box
-                goggle_classes_set = [0, 1] #goggles, no_goggles
-                shoe_classes_set = [2, 3] #safe_shoes, not_safe_shoes
-                goggle_det = detections[mask[0] & np.isin(detections.class_id, goggle_classes_set)] # mask[0] is the left bounding box
-                shoe_det = detections[mask[1] & np.isin(detections.class_id, shoe_classes_set)] # mask[1] is the right bounding box
+                # goggle_classes_set = [0, 1] #goggles, no_goggles
+                # shoe_classes_set = [2, 3] #safe_shoes, not_safe_shoes
+                # goggle_det = detections[mask[0] & np.isin(detections.class_id, goggle_classes_set)] # mask[0] is the left bounding box
+                # shoe_det = detections[mask[1] & np.isin(detections.class_id, shoe_classes_set)] # mask[1] is the right bounding box
 
-
-                # TRIGGER EVENT
-                if self.zones[0].current_count > zone_count and detection_trigger_flag==False:
-                    detection_trigger_flag = True
-
-                    # JSON RAW DATA
-                    # Convert pandas DataFrame to a Python dictionary
-                    result_dict = results.pandas().xyxy[0].to_dict()
-                    # Convert dictionary to JSON string
-                    result_json = json.dumps(result_dict)
-                    # Print the JSON string
-                    print()
-                    print("RESULTS: ", results)
-                    print("RESULTS JSON: ", result_json)
-                    print()
-
-
-                # Once the first face is detected we collect the next n frames, take the most occured detection and use the least blurry image
-                if detection_trigger_flag == True:
-                    cnt +=1
-                    detections_array.append((goggle_det, shoe_det))
-                    frame1_array.append(myFrame1)
-                    frame2_array.append(myFrame2)
-                    # print("Goggle detections: ", goggle_det)
-                    # print("Shoe detections: ", shoe_det)
-                    if cnt >= n: #n frames after first detection trigger
-                        cnt = 0
-                        detection_trigger_flag=False
-                        goggle_detections = []
-                        shoe_detections = []
-                        # print(detections_array)
-                        for goggle_det, shoe_det in detections_array:
-                            if hasattr(goggle_det, 'class_id') and len(goggle_det.class_id > 0):
-                                [goggle_detections.append(int(ids)) for ids in goggle_det.class_id]
-                                # print("len:",len(goggle_det.class_id))
-                                # print("goggle detections: ",goggle_detections)
-                            if hasattr(shoe_det, 'class_id') and len(shoe_det.class_id > 0):
-                                [shoe_detections.append(int(ids)) for ids in shoe_det.class_id]
-                                # print("shoe detections: ",shoe_det)
-                           
-
-                        most_common_goggle_detection = 0 #no goggles
-                        most_common_shoe_detection = 2  #wrong_shoes
-                        if len(goggle_detections):
-                            most_common_goggle_detection = collections.Counter(goggle_detections).most_common(1)[0][0]
-                            print("Most common goggle detection: ", most_common_goggle_detection)
-                        else:
-                            print("No goggle detections made")
-
-                        if len(shoe_detections):
-                            most_common_shoe_detection = collections.Counter(shoe_detections).most_common(1)[0][0]
-                            print("Most common shoe detection: ", most_common_shoe_detection)
-                        else:
-                            print("No shoe detections made")
-
-                        #Pick least blurry image
-                        myFrame1 = frame1_array[least_blurry_image_indx(frame1_array)]
-                        myFrame2 = frame2_array[least_blurry_image_indx(frame2_array)]
-
-
-                        #COMPLIANCE LOGIC
-                        compliant = False
-                        if most_common_goggle_detection == 0:
-                            compliant = False  # no_mask
-                        elif most_common_goggle_detection == 1:
-                            compliant = True  # mask
-
-                        
-                        bordered_frame1 = draw_border(myFrame1, compliant, self.border_thickness)
-                        bordered_frame2 = draw_border(myFrame2, compliant, self.border_thickness)
-                        bordered_frame = np.hstack((bordered_frame1, bordered_frame2))
-        
-
-                        data = {
-                                'zone_name': '1',
-                                'crossing_type': 'coming',
-                                'compliant' : str(compliant)
-                            }
-
-                        # NOW SEND IMAGE TO THE SERVER WITH DATA
-                        #convert image to be ready to be sent
-                        
-                        success, encoded_image = cv2.imencode('.jpg', bordered_frame1)    
-                        if success:
-                            # Convert the encoded image to a byte array
-                            image_bytes = bytearray(encoded_image)
-                            # You can now use image_data like you did with f.read() 
-
-                            # Send the image to the server
-                            sendImageToServer(image_bytes, data, IP_address=self.server_IP)
-
-                            print()
-                            print("########### DETECTION MADE #############")
-                            print(result_json)
-                            print("########### END OF DETECTION #############")
-                            print()
-                        else:
-                            raise ValueError("Could not encode the frame as a JPEG image")
-
+                
+                if self.zones[0].current_count >= 1:
+                    # TEMPORARY LOGIC
+                    if (time.time() - trigger_start) >= delta_T and detection_trigger_flag == True:
+                        cnt +=1
+                        trigger_start = time.time()
+                        frame1_array.append(myFrame1)
                         if self.save:
-                            self.save_frames([frame1_array, frame2_array])
-                        #Finally clear detections array
-                        detections_array = []
-                        frame1_array = []
-                        frame2_array = []
+                            print("SAVING IMAGE first if - ", cnt)
+                            self.save_frames([frame1_array])
+
+                    if zone_count == 0: #previous zone_cont = 0 
+                        cnt +=1
+                        frame1_array.append(myFrame1)
+                        if self.save:
+                            print("SAVING IMAGE second if - ", cnt)
+                            self.save_frames([frame1_array])
+                        detection_trigger_flag = True    
+
+                    
+                    if cnt >= n_pics:
+                        detection_trigger_flag = False
+                        cnt = 0
+                else:
+                    cnt = 0
+                    detection_trigger_flag =False
 
                 zone_count = self.zones[0].current_count
+                frame1_array = []
+                    
+
+
+                # # Once the first face is detected we collect the next n frames, take the most occured detection and use the least blurry image
+                # if detection_trigger_flag == True:
+                #     cnt +=1
+                #     detections_array.append((goggle_det, shoe_det))
+                #     frame1_array.append(myFrame1)
+                #     frame2_array.append(myFrame2)
+                #     # print("Goggle detections: ", goggle_det)
+                #     # print("Shoe detections: ", shoe_det)
+                #     if cnt >= n: #n frames after first detection trigger
+                #         cnt = 0
+                #         detection_trigger_flag=False
+                #         goggle_detections = []
+                #         shoe_detections = []
+                #         # print(detections_array)
+                #         for goggle_det, shoe_det in detections_array:
+                #             if hasattr(goggle_det, 'class_id') and len(goggle_det.class_id > 0):
+                #                 [goggle_detections.append(int(ids)) for ids in goggle_det.class_id]
+                #                 # print("len:",len(goggle_det.class_id))
+                #                 # print("goggle detections: ",goggle_detections)
+                #             if hasattr(shoe_det, 'class_id') and len(shoe_det.class_id > 0):
+                #                 [shoe_detections.append(int(ids)) for ids in shoe_det.class_id]
+                #                 # print("shoe detections: ",shoe_det)
+                           
+
+                #         most_common_goggle_detection = 0 #no goggles
+                #         most_common_shoe_detection = 2  #wrong_shoes
+                #         if len(goggle_detections):
+                #             most_common_goggle_detection = collections.Counter(goggle_detections).most_common(1)[0][0]
+                #             print("Most common goggle detection: ", most_common_goggle_detection)
+                #         else:
+                #             print("No goggle detections made")
+
+                #         if len(shoe_detections):
+                #             most_common_shoe_detection = collections.Counter(shoe_detections).most_common(1)[0][0]
+                #             print("Most common shoe detection: ", most_common_shoe_detection)
+                #         else:
+                #             print("No shoe detections made")
+
+                #         #Pick least blurry image
+                #         myFrame1 = frame1_array[least_blurry_image_indx(frame1_array)]
+                #         myFrame2 = frame2_array[least_blurry_image_indx(frame2_array)]
+
+
+                #         #COMPLIANCE LOGIC
+                #         compliant = False
+                #         if most_common_goggle_detection == 0:
+                #             compliant = False  # no_mask
+                #         elif most_common_goggle_detection == 1:
+                #             compliant = True  # mask
+
+                        
+                #         bordered_frame1 = draw_border(myFrame1, compliant, self.border_thickness)
+                #         bordered_frame2 = draw_border(myFrame2, compliant, self.border_thickness)
+                #         bordered_frame = np.hstack((bordered_frame1, bordered_frame2))
+        
+
+                #         data = {
+                #                 'zone_name': '1',
+                #                 'crossing_type': 'coming',
+                #                 'compliant' : str(compliant)
+                #             }
+
+                #         # NOW SEND IMAGE TO THE SERVER WITH DATA
+                #         #convert image to be ready to be sent
+                        
+                #         success, encoded_image = cv2.imencode('.jpg', bordered_frame1)    
+                #         if success:
+                #             # Convert the encoded image to a byte array
+                #             image_bytes = bytearray(encoded_image)
+                #             # You can now use image_data like you did with f.read() 
+
+                #             # Send the image to the server
+                #             sendImageToServer(image_bytes, data, IP_address=self.server_IP)
+
+                #             print()
+                #             print("########### DETECTION MADE #############")
+                #             print(result_json)
+                #             print("########### END OF DETECTION #############")
+                #             print()
+                #         else:
+                #             raise ValueError("Could not encode the frame as a JPEG image")
+
+                #         if self.save:
+                #             self.save_frames([frame1_array, frame2_array])
+                #         #Finally clear detections array
+                #         detections_array = []
+                #         frame1_array = []
+                #         frame2_array = []
+
+                # zone_count = self.zones[0].current_count
+
+
+
                 # Display frame
                 if self.display:
                     cv2.imshow('ComboCam', frame)
