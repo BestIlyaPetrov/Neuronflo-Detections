@@ -4,7 +4,6 @@ import time
 import numpy as np
 import torch, torchvision
 import json
-import glob
 
 import supervision as sv
 import traceback
@@ -12,7 +11,7 @@ import collections
 from pathlib import Path
 
 from .bbox_gui import create_bounding_boxes, load_bounding_boxes
-from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx
+from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices
 from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
 from .peripherals import ping_alarm
@@ -28,21 +27,7 @@ class EntranceInferenceSystem:
 
 
         self.server_IP = findLocalServer()
-
-        # Determine the two sources to use for cameras:
-        # Find all available video devices
-        devices = glob.glob('/dev/video*')
-        # Sort the device names in ascending order
-        devices.sort()
-        # Use the first device as the capture index
-        cap_index = [0,1] #default values aka /dev/video0 and /dev/video1
-        # If there are no devices available, raise an error
-        if not devices:
-            raise ValueError('No video devices found')
-
-        # Otherwise, use the lowest available indexes
-        else:
-            cap_index = [int(devices[0][-1]), int(devices[1][-1])]
+        cap_index = get_device_indices(quantity = 2)
 
         # Initialize the cameras
         self.cams = []
@@ -63,7 +48,7 @@ class EntranceInferenceSystem:
             zone_polygons.append(coordinates)
 
             coordinates = load_bounding_boxes(self.cams[1])
-            coordinates[:, 0] += video_res[0] # add 640 to each x coordinates, bc the frames are horizonatally stacked
+            coordinates[:, 0] += video_res[0] # add 640 to each x coordinates, bc the frames are horizontally stacked
             zone_polygons.append(coordinates)
             
 
