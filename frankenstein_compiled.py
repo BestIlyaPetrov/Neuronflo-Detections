@@ -37,7 +37,7 @@ def main(
 
     try:
         # Initialize the model
-        inference_obj= inference.InferenceSystem(
+        inference_obj= inference.EntranceInferenceSystem(
             model_name = weights,
             video_res = video_res,
             border_thickness = border_thickness,

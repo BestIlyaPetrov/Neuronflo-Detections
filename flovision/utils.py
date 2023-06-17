@@ -27,6 +27,25 @@ class IPListener:
         pass
 
 
+def findLocalServer(target_service_name = "neuronflo-server._workstation._tcp.local."):
+    #Find the IP of the windows server
+    listener = IPListener(target_service_name)
+    zeroconf = Zeroconf()
+
+    try:
+        print("Looking for server IP...")
+        browser = ServiceBrowser(zeroconf, "_workstation._tcp.local.", listener)
+        while True:
+            if listener.found_ip is not None:
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        zeroconf.close()
+
+    # Continue with more lines of code after the IP address has been found
+    print(f"IP address found: {listener.found_ip}, continuing with the rest of the script...")
+    return listener.found_ip
 
 
 

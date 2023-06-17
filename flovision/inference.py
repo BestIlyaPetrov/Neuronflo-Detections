@@ -14,37 +14,20 @@ from pathlib import Path
 from .bbox_gui import create_bounding_boxes, load_bounding_boxes
 from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx
 from .comms import sendImageToServer
-from .utils import get_highest_index, IPListener
+from .utils import get_highest_index, findLocalServer
 from .peripherals import ping_alarm
 from zeroconf import ServiceBrowser, Zeroconf
 
 
 
-class InferenceSystem:
+class EntranceInferenceSystem:
     def __init__(self, model_name, video_res, border_thickness, display, save, bboxes):
         self.initialize(model_name, video_res, border_thickness, display, save, bboxes)
 
     def initialize(self, model_name, video_res, border_thickness, display, save, bboxes):
 
-        #Find the IP of the windows server
-        target_service_name = "neuronflo-server._workstation._tcp.local."
-        listener = IPListener(target_service_name)
-        zeroconf = Zeroconf()
 
-        try:
-            print("Looking for server IP...")
-            browser = ServiceBrowser(zeroconf, "_workstation._tcp.local.", listener)
-            while True:
-                if listener.found_ip is not None:
-                    break
-        except KeyboardInterrupt:
-            pass
-        finally:
-            zeroconf.close()
-
-        # Continue with more lines of code after the IP address has been found
-        print(f"IP address found: {listener.found_ip}, continuing with the rest of the script...")
-        self.server_IP = listener.found_ip
+        self.server_IP = findLocalServer()
 
         # Determine the two sources to use for cameras:
         # Find all available video devices
@@ -62,23 +45,24 @@ class InferenceSystem:
             cap_index = [int(devices[0][-1]), int(devices[1][-1])]
 
         # Initialize the cameras
-        self.cam1 = vStream(cap_index[0], video_res)
-        self.cam2 = vStream(cap_index[1], video_res)
+        self.cams = []
+        self.cams.append(vStream(cap_index[0], video_res))
+        self.cams.append(vStream(cap_index[1], video_res))
 
         # Define the detection regions
         zone_polygons = []
         if bboxes:
-            coordinates = create_bounding_boxes(self.cam1)
+            coordinates = create_bounding_boxes(self.cams[0])
             zone_polygons.append(coordinates)
 
-            coordinates = create_bounding_boxes(self.cam2)
+            coordinates = create_bounding_boxes(self.cams[1])
             coordinates[:, 0] += video_res[0] # add 640 to each x coordinates, bc the frames are horizonatally stacked
             zone_polygons.append(coordinates)
         else:
-            coordinates = load_bounding_boxes(self.cam1)
+            coordinates = load_bounding_boxes(self.cams[0])
             zone_polygons.append(coordinates)
 
-            coordinates = load_bounding_boxes(self.cam2)
+            coordinates = load_bounding_boxes(self.cams[1])
             coordinates[:, 0] += video_res[0] # add 640 to each x coordinates, bc the frames are horizonatally stacked
             zone_polygons.append(coordinates)
             
@@ -120,8 +104,8 @@ class InferenceSystem:
 
     def stop(self):
         print("Stopping detections and releasing cameras")
-        self.cam1.capture.release()
-        self.cam2.capture.release()
+        for i in range(0, len(self.cams)):
+            self.cams[i].capture.release()
         cv2.destroyAllWindows()
         exit(1)
 
@@ -166,10 +150,10 @@ class InferenceSystem:
                 # start_time = time.time()
 
                 ## Make the slowest cam be the bottleneck here
-                new_frame1, myFrame1 = self.cam1.getFrame()
+                new_frame1, myFrame1 = self.cams[0].getFrame()
                 if new_frame1 == False:
                     continue
-                new_frame2, myFrame2 = self.cam2.getFrame()
+                new_frame2, myFrame2 = self.cams[1].getFrame()
                 if new_frame2 == False:
                     continue
 
@@ -236,8 +220,11 @@ class InferenceSystem:
                                 # print("goggle detections: ",goggle_detections)
                             if hasattr(shoe_det, 'class_id') and len(shoe_det.class_id > 0):
                                 [shoe_detections.append(int(ids)) for ids in shoe_det.class_id]
-                                print("shoe detections: ",shoe_det)
+                                # print("shoe detections: ",shoe_det)
                            
+
+                        most_common_goggle_detection = 0 #no goggles
+                        most_common_shoe_detection = 2  #wrong_shoes
                         if len(goggle_detections):
                             most_common_goggle_detection = collections.Counter(goggle_detections).most_common(1)[0][0]
                             print("Most common goggle detection: ", most_common_goggle_detection)
