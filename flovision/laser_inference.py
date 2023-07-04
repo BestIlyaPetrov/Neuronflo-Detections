@@ -169,7 +169,7 @@ class LaserInferenceSystem:
 
                 
                 if self.zones[0].current_count >= 1:
-                    # TEMPORARY LOGIC
+                    # TEMPORARY LOGIC - made to be gathering data automatically for us to train a model
                     if (time.time() - trigger_start) >= delta_T and detection_trigger_flag == True:
                         cnt +=1
                         trigger_start = time.time()

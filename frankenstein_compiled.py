@@ -37,7 +37,7 @@ def main(
 
     try:
         # Initialize the model
-        inference_obj= laser_inference.EntranceInferenceSystem(
+        inference_obj= laser_inference.LaserInferenceSystem(
             model_name = weights,
             video_res = video_res,
             border_thickness = border_thickness,
