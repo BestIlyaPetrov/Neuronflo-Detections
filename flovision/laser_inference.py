@@ -19,7 +19,7 @@ from zeroconf import ServiceBrowser, Zeroconf
 
 
 
-class EntranceInferenceSystem:
+class LaserInferenceSystem:
     def __init__(self, model_name, video_res, border_thickness, display, save, bboxes):
         self.initialize(model_name, video_res, border_thickness, display, save, bboxes)
 
