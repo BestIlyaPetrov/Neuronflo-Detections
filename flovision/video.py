@@ -2,7 +2,28 @@ from threading import Thread
 import cv2
 import numpy as np
 import json
+import glob
 
+def get_device_indices(quantity = 1):
+    # Determine the two sources to use for cameras:
+    # Find all available video devices
+    devices = glob.glob('/dev/video*')
+    # Sort the device names in ascending order
+    devices.sort()
+    # Use the first device as the capture index
+    # cap_index = [0,1] #default values aka /dev/video0 and /dev/video1
+    # If there are no devices available, raise an error
+    if not devices:
+        raise ValueError('No video devices found')
+    elif len(devices) < quantity:
+        raise ValueError(f'Not enough cameras connected. Only found {len(devices)}, but need {quantity}')
+    # Otherwise, use the lowest available indexes
+    else:
+        cap_index = []
+        #Creating an array of camera device indices. Aka if we find /dev/video0 and /dev/video2, cap_index == [0,2]
+        for i in range(0, quantity):
+            cap_index.append(int(devices[i][-1]))
+        return cap_index
 
 def draw_border(frame, compliant, border_width=5):
     """
@@ -70,6 +91,8 @@ class vStream:
         self.thread.daemon=True
         self.thread.start()
         self.src = src
+        self.new_frame_available = False
+        self.frame = None
     def update(self):
         while True:
             _,self.frame = self.capture.read()
@@ -79,6 +102,8 @@ class vStream:
 
 
     def getFrame(self):
+        if self.frame is None:
+            return (False, self.frame)
         if self.new_frame_available:
             self.new_frame_available = False
             return (True, self.frame)

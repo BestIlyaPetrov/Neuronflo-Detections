@@ -10,56 +10,58 @@ import traceback
 import collections
 from pathlib import Path
 
-
-from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx
+from .bbox_gui import create_bounding_boxes, load_bounding_boxes
+from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices
 from .comms import sendImageToServer
-from .utils import get_highest_index, IPListener
+from .utils import get_highest_index, findLocalServer
 from .peripherals import ping_alarm
 from zeroconf import ServiceBrowser, Zeroconf
 
 
 
-class InferenceSystem:
-    def __init__(self, model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save):
-        self.initialize(model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save)
+class EntranceInferenceSystem:
+    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes):
+        self.initialize(model_name, video_res, border_thickness, display, save, bboxes)
 
-    def initialize(self, model_name, video_res, CENTER_COORDINATES, WIDTH, HEIGHT, border_thickness, display, save):
+    def initialize(self, model_name, video_res, border_thickness, display, save, bboxes):
 
-        #Find the IP of the windows server
-        target_service_name = "neuronflo-server._workstation._tcp.local."
-        listener = IPListener(target_service_name)
-        zeroconf = Zeroconf()
 
-        try:
-            browser = ServiceBrowser(zeroconf, "_workstation._tcp.local.", listener)
-            while True:
-                if listener.found_ip is not None:
-                    break
-        except KeyboardInterrupt:
-            pass
-        finally:
-            zeroconf.close()
-
-        # Continue with more lines of code after the IP address has been found
-        print(f"IP address found: {listener.found_ip}, continuing with the rest of the script...")
-        self.server_IP = listener.found_ip
+        self.server_IP = findLocalServer()
+        cap_index = get_device_indices(quantity = 2)
 
         # Initialize the cameras
-        self.cam1 = vStream(0, video_res)
-        self.cam2 = vStream(1, video_res)
+        self.cams = []
+        self.cams.append(vStream(cap_index[0], video_res))
+        self.cams.append(vStream(cap_index[1], video_res))
+
+        # Define the detection regions
+        zone_polygons = []
+        if bboxes:
+            coordinates = create_bounding_boxes(self.cams[0])
+            zone_polygons.append(coordinates)
+
+            coordinates = create_bounding_boxes(self.cams[1])
+            coordinates[:, 0] += video_res[0] # add 640 to each x coordinates, bc the frames are horizonatally stacked
+            zone_polygons.append(coordinates)
+        else:
+            coordinates = load_bounding_boxes(self.cams[0])
+            zone_polygons.append(coordinates)
+
+            coordinates = load_bounding_boxes(self.cams[1])
+            coordinates[:, 0] += video_res[0] # add 640 to each x coordinates, bc the frames are horizontally stacked
+            zone_polygons.append(coordinates)
+            
+
 
         # Load the model
-        self.model = torch.hub.load('./', 'custom', path='bestmaskv5.pt', force_reload=True, source='local', device='0')
+        self.model = torch.hub.load('./', 'custom', path=model_name, force_reload=True, source='local', device='0')
 
         # Set frame params
         self.frame_size = (video_res[0] * 2, video_res[1])  # since we are horizontally stacking the two images
         self.border_thickness = border_thickness
         self.display = display
         self.save = save
-        # Calculate detection region
-        zone_polygons = []
-        for i in range(len(CENTER_COORDINATES)):
-            zone_polygons.append(region_dimensions(self.frame_size, CENTER_COORDINATES[i], WIDTH[i], HEIGHT[i]))
+ 
 
         # set the zones
         colors = sv.ColorPalette.default()
@@ -86,8 +88,9 @@ class InferenceSystem:
         self.box_annotator = sv.BoxAnnotator(thickness=2, text_thickness=2, text_scale=1)
 
     def stop(self):
-        self.cam1.capture.release()
-        self.cam2.capture.release()
+        print("Stopping detections and releasing cameras")
+        for i in range(0, len(self.cams)):
+            self.cams[i].capture.release()
         cv2.destroyAllWindows()
         exit(1)
 
@@ -132,10 +135,10 @@ class InferenceSystem:
                 # start_time = time.time()
 
                 ## Make the slowest cam be the bottleneck here
-                new_frame1, myFrame1 = self.cam1.getFrame()
+                new_frame1, myFrame1 = self.cams[0].getFrame()
                 if new_frame1 == False:
                     continue
-                new_frame2, myFrame2 = self.cam2.getFrame()
+                new_frame2, myFrame2 = self.cams[1].getFrame()
                 if new_frame2 == False:
                     continue
 
@@ -202,8 +205,11 @@ class InferenceSystem:
                                 # print("goggle detections: ",goggle_detections)
                             if hasattr(shoe_det, 'class_id') and len(shoe_det.class_id > 0):
                                 [shoe_detections.append(int(ids)) for ids in shoe_det.class_id]
-                                print("shoe detections: ",shoe_det)
+                                # print("shoe detections: ",shoe_det)
                            
+
+                        most_common_goggle_detection = 0 #no goggles
+                        most_common_shoe_detection = 2  #wrong_shoes
                         if len(goggle_detections):
                             most_common_goggle_detection = collections.Counter(goggle_detections).most_common(1)[0][0]
                             print("Most common goggle detection: ", most_common_goggle_detection)
@@ -243,7 +249,7 @@ class InferenceSystem:
                         # NOW SEND IMAGE TO THE SERVER WITH DATA
                         #convert image to be ready to be sent
                         
-                        success, encoded_image = cv2.imencode('.jpg', bordered_frame)    
+                        success, encoded_image = cv2.imencode('.jpg', bordered_frame1)    
                         if success:
                             # Convert the encoded image to a byte array
                             image_bytes = bytearray(encoded_image)

@@ -48,9 +48,12 @@ def sendImageToServer(image_bytes, image_data, IP_address):
     url = f'http://{IP_address}:80/'
     if auth_token == "":
         auth_token, csrf_token = authenticate(identifier = "jetson01", url=url)
-        print("New auth token is: ", auth_token)
+        # print("New auth token is: ", auth_token)
+        print("Identifier got confirmed, so I received new auth token. Proceeding to send the image")
     else: 
-        print("Auth token already is: ", auth_token)
+        print("Successfully authorized, proceeding to send the image.")
+        # print("Auth token already is: ", auth_token)
+
 
 
     #ALL SUBSEQUENT DATA POSTS HAPPEN HERE
