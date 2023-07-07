@@ -6,7 +6,7 @@ import traceback
 import glob
 import argparse
 
-
+## This code allows you to view the camera ##
 
 class vStream:
     def __init__(self, src, width, height):
