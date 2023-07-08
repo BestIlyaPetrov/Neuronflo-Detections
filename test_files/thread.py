@@ -38,7 +38,7 @@ def detection():
     # Detection code
     pastDect = ''
 
-    model = torch.hub.load('ultralytics/yolov5', 'custom', path='bestmaskv5.pt')
+    model = torch.hub.load('ultralytics/yolov5', 'custom', path='../trained_models/bestmaskv5.pt')
     model.conf = 0.8
     model.iou = 0.45
     cam = cv2.VideoCapture(0)

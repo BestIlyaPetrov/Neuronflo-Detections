@@ -9,10 +9,10 @@ import operator
 # # Load YOLOv5 model
 #model = torch.hub.load("ultralytics/yolov5", "yolov5s")
  #Load custom YOLOv5 model from file
-model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,source='local')
+model = torch.hub.load('./','custom', path='../trained_models/bestmaskv5.pt', force_reload=True,source='local')
 
 
-#model_path = "./bestmaskv5.pt"  # Replace with your model file path
+#model_path = "../trained_models/bestmaskv5.pt"  # Replace with your model file path
 #model = torch.load(model_path)
 
 # Open video capture
@@ -78,7 +78,7 @@ def video_to_frames(input_loc, output_loc):
                 cv2.imwrite(output_loc + "/nomask.jpg" , frame)
 
         zone_count = zone.current_count
-        #cv2.imshow("bestmaskv5.pt",frame)
+        #cv2.imshow("../trained_models/bestmaskv5.pt",frame)
         if (cv2.waitKey(30)==27):
             break
 
