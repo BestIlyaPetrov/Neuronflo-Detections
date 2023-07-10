@@ -117,14 +117,14 @@ class vStream:
 
 
 # device = select_device('0')
-# model = DetectMultiBackend('bestmaskv5.pt', device=device)
+# model = DetectMultiBackend('../trained_models/bestmaskv5.pt', device=device)
 
 #Initialize the cameras 
 cam1 = vStream(0,video_res)
 cam2 = vStream(1,video_res)
 
 #Load the model
-model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,source='local', device='0')
+model = torch.hub.load('./','custom', path='../trained_models/bestmaskv5.pt', force_reload=True,source='local', device='0')
 
 frame_size=(2*w,h) #since we are horizonatlly stacking the two images
 # Calculate detection region

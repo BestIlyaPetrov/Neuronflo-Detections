@@ -15,7 +15,7 @@ import operator
 
 
 class YOLOv5Detector:
-    def __init__(self, capture_index=0, model_path='./bestmaskv5.pt', input_res=(1920,1080) ):
+    def __init__(self, capture_index=0, model_path='../trained_models/bestmaskv5.pt', input_res=(1920,1080) ):
 
         # Load YOLOv5 model
         self.model = torch.hub.load('./', 'custom', path=model_path, force_reload=True, source='local', device='0')
@@ -108,7 +108,7 @@ class YOLOv5Detector:
                 zone.trigger(detections=detections)
 
                 self.frame = zone_annotator.annotate(scene=self.frame)
-                cv2.imshow("bestmaskv5.pt",self.frame)
+                cv2.imshow("../trained_models/bestmaskv5.pt",self.frame)
 
                 if(operator.and_(not(zone_count),zone.current_count)):
 
@@ -140,7 +140,7 @@ class YOLOv5Detector:
 
 
                     zone_count = zone.current_count
-                    # cv2.imshow("bestmaskv5.pt",frame)
+                    # cv2.imshow("../trained_models/bestmaskv5.pt",frame)
                     
 
                 ## END OF INTEGRATION ##
@@ -156,5 +156,5 @@ class YOLOv5Detector:
 
 
 
-detector = YOLOv5Detector( model_path='bestmaskv5.pt', input_res=(1920,1080))
+detector = YOLOv5Detector( model_path='../trained_models/bestmaskv5.pt', input_res=(1920,1080))
 detector.run_detection(center_coordinates=(50, 50), width=50, height=50)

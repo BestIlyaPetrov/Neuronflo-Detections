@@ -166,7 +166,7 @@ def main():
         raise ValueError(f"Could not open video device with index {capture_index}")
 
    #Load custom YOLOv5 model from file
-    model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True,source='local', device='0')
+    model = torch.hub.load('./','custom', path='../trained_models/bestmaskv5.pt', force_reload=True,source='local', device='0')
 
     # MAIN EXECUTION LOOP
     # save_interval = 10  # Time interval in seconds to save a frame
@@ -260,7 +260,7 @@ def main():
 
 
             zone_count = zone.current_count
-            cv2.imshow("bestmaskv5.pt",frame)
+            cv2.imshow("../trained_models/bestmaskv5.pt",frame)
             if cv2.waitKey(1) == ord('q'):
                 cap.release()
                 cv2.destroyAllWindows()

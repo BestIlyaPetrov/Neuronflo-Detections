@@ -120,7 +120,7 @@ class YOLOv5Live:
     def main(self):
 
         # Load custom YOLOv5 model from file
-        model = torch.hub.load('./','custom', path='bestmaskv5.pt', force_reload=True, source='local', device='0')
+        model = torch.hub.load('./','custom', path='../trained_models/bestmaskv5.pt', force_reload=True, source='local', device='0')
 
         # Find all available video devices
         devices = glob.glob('/dev/video*')
