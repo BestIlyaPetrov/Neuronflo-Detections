@@ -4,13 +4,15 @@ import time
 import datetime
 import pytz
 import json
+import dotenv
+import os
 
-
-# Define the username and password for the connection
-username = "ilya-jetson"
-password = "jetson-ai"
-hostname = "142.93.72.136"
-topic = "jetson/data"
+# Load credentials from .env file
+dotenv.load_dotenv()
+username = os.getenv("user_name")
+password = os.getenv("password")
+hostname = os.getenv("host_name")
+topic = os.getenv("topic")
 
 # n = 3
 
