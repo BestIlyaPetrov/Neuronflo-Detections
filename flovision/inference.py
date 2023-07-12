@@ -144,6 +144,79 @@ class InferenceSystem:
             None
         """
 
-        raise NotImplementedError
+        print("Starting inference system")
 
+        zone_count = 0 # count the number of zones
+        num_consecutive_frames = 3 # num_consecutive_frames that we want to window (to reduce jitter)
+        
+        detections_array = []
+        array_for_frames = []
+        cnt = 0
+        detection_trigger_flag = False
+
+        while True:
+            try:
+                # Main detection loop
+                captures = [cam.getFrame() for cam in self.cams]
+                retrieved = [capture[0] for capture in captures]
+                if not all(retrieved):
+                    continue
+
+                frame = np.hstack(tuple(capture[1] for capture in captures))
+                results = self.model(frame)
+                detections = sv.Detections.from_yolov5(results)
+                detections = detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
+
+                # Annotations
+                mask = []
+                for zone, zone_annotator in zip(self.zones, self.zone_annotators):
+                    mask.append(zone.trigger(detections=detections))
+                    frame = self.box_annotator.annotate(scene=frame, detections=detections)
+                    frame = zone_annotator.annotate(scene=frame)
+
+                # Split into different sets of detections depending on object, by bounding box
+                present_indices = [2* idx for idx in range(len(self.items))]
+                absent_indices = [2* idx + 1 for idx in range(len(self.items))]
+                item_sets = [[present, absent] for present, absent in zip(present_indices, absent_indices)]
+                item_detections = [detections[mask[i] % np.isin(detections.class_id, item_sets[i])] for i in range(len(item_sets))]
+
+                # TRIGGER EVENT
+                if self.trigger_event():
+                    detection_trigger_flag = True
+                    results_dict = results.pandas().xyxy[0].to_dict()
+                    results_json = json.dumps(results_dict)
+                    print()
+                    print("RESULTS: ", results)
+                    print("RESULTS JSON: ", results_json)
+                    print()
+
+                if detection_trigger_flag:
+                    self.trigger_action()
+                    detection_trigger_flag = False
+
+                # Display frame
+                if self.display:
+                    cv2.imshow('ComboCam', frame)
+
+            except Exception as e:
+                print("Frame unavailable, error was: ", e)
+                traceback.print_exc()
+
+            if cv2.waitKey(1) == ord('q'):
+                self.stop()
+
+    def trigger_event(self) -> bool:
+        """
+        Determine if a trigger event has occurred
+
+        return:
+            True if a trigger event has occurred, False otherwise
+        """
+        raise NotImplementedError
+    
+    def trigger_action(self) -> None:
+        """
+        Perform the trigger action
+        """
+        raise NotImplementedError
 
