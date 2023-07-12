@@ -24,7 +24,7 @@ from utils.torch_utils import select_device, smart_inference_mode
 
 #CUSTOM IMPORT
 from queue import Queue
-from jetson_client import send_update_MQTT
+from flovision.jetson import Jetson
 
 @smart_inference_mode()
 def run(
@@ -75,6 +75,9 @@ def run(
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
+
+    # Jetson initialization
+    jetson = Jetson()
 
     # Dataloader
     bs = 1  # batch_size
@@ -199,7 +202,7 @@ def run(
                                     print("")
                                     mask_state = unique_list[0]
                                     #Send the update to the backend server (to mqtt broker first to be exact)
-                                    send_update_MQTT(mask_state)
+                                    jetson.send_update_MQTT(mask_state)
 
                                 checks.pop(0)
                             else:

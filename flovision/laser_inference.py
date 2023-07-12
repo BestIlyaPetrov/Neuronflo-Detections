@@ -14,7 +14,7 @@ from .bbox_gui import create_bounding_boxes, load_bounding_boxes
 from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices
 from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
-from .peripherals import ping_alarm
+import jetson
 from zeroconf import ServiceBrowser, Zeroconf
 
 
@@ -33,6 +33,9 @@ class LaserInferenceSystem:
         self.cams = []
         self.cams.append(vStream(cap_index[0], video_res))
         # self.cams.append(vStream(cap_index[1], video_res))
+
+        # Initialize Jetson peripherals
+        self.jetson = jetson.Jetson()
 
         # Define the detection regions
         zone_polygons = []
