@@ -5,6 +5,7 @@ Class for Jetson Nano to integrate all its functions
 import os
 import sys
 import datetime
+import time
 import pytz
 import json
 import dotenv
@@ -22,6 +23,7 @@ class Jetson:
         self.red = c.RED_LED
         self.green = c.GREEN_LED
         self.blue = c.BLUE_LED
+        self.alarm_pin = c.ALARM_PIN
         self.colors = {"red" : self.red, "green" : self.green, "blue" : self.blue}
 
         self.username = os.getenv("user_name")
@@ -33,6 +35,7 @@ class Jetson:
         GPIO.setup(self.red, GPIO.OUT)
         GPIO.setup(self.green, GPIO.OUT)
         GPIO.setup(self.blue, GPIO.OUT)
+        GPIO.setup(self.alarm_pin, GPIO.OUT)
 
     def send_update_MQTT(self, state) -> None:
         """
@@ -81,6 +84,39 @@ class Jetson:
         except Exception as e:
             print(f"Unable to light up LEDs, Error: {e}")
 
+    def turn_off_RGB_LED(self) -> None:
+        """
+        Turns off the RGB LED
+        """
+        try:
+            [GPIO.output(self.colors[col], GPIO.LOW) for col in self.colors]
+        except Exception as e:
+            print(f"Unable to turn off LEDs, Error: {e}")
+
+    
+    def ping_alarm(self, cycle_t = c.DEFAULT_ALARM_CYCLE, iterations = c.DEFAULT_ALARM_ITERATIONS) -> None:
+        """
+        Pings the alarm
+        """
+        try:
+            half_cycle = cycle_t / 2 
+            for i in range(iterations):
+                GPIO.output(self.alarm_pin, GPIO.HIGH)
+                time.sleep(half_cycle)
+                GPIO.output(self.alarm_pin, GPIO.LOW)
+                time.sleep(half_cycle)
+                
+        except Exception as e:
+            print(f"Unable to ping alarm, Error: {e}")
+
+    def cleanup(self) -> None:
+        """
+        Cleans up the GPIO pins
+        """
+        try:
+            GPIO.cleanup()
+        except Exception as e:
+            print(f"Unable to cleanup GPIO pins, Error: {e}")
     
 
 if __name__ == '__main__':

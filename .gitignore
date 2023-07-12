@@ -37,6 +37,8 @@ data/images/*
 
 results*.csv
 
+*.env
+
 # Datasets -------------------------------------------------------------------------------------------------------------
 coco/
 coco128/
@@ -254,5 +256,3 @@ crashlytics.properties
 crashlytics-build.properties
 fabric.properties
 
-# Credentials
-*.env

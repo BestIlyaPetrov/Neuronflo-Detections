@@ -16,10 +16,9 @@ def ping_alarm(cycle_t = 1, iterations = 2, pin=29):
         time.wait(half_cycle)
         GPIO.output(pin, GPIO.LOW)
         time.wait(half_cycle)
+        
     # Clear or release the GPIO pin(s)
     GPIO.cleanup(gpio_pins)
-
-    
 
 
 
