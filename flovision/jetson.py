@@ -14,7 +14,7 @@ import Jetson.GPIO as GPIO
 import flovision.constants as c
 
 # Load credentials from .env file
-dotenv.load_dotenv()
+dotenv.load_dotenv('credentials.env')
 
 class Jetson:
     def __init__(self) -> None:
