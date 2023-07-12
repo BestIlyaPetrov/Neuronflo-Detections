@@ -11,7 +11,7 @@ import json
 import dotenv
 import paho.mqtt.publish as publish
 import Jetson.GPIO as GPIO
-import constants as c
+import flovision.constants as c
 
 # Load credentials from .env file
 dotenv.load_dotenv()
