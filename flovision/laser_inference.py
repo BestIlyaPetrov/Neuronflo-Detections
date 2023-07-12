@@ -14,7 +14,7 @@ from .bbox_gui import create_bounding_boxes, load_bounding_boxes
 from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices
 from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
-import .jetson
+from .jetson import Jetson
 from zeroconf import ServiceBrowser, Zeroconf
 
 
@@ -35,7 +35,7 @@ class LaserInferenceSystem:
         # self.cams.append(vStream(cap_index[1], video_res))
 
         # Initialize Jetson peripherals
-        self.jetson = jetson.Jetson()
+        self.jetson = Jetson()
 
         # Define the detection regions
         zone_polygons = []
@@ -58,7 +58,7 @@ class LaserInferenceSystem:
 
         # Load the model
         # self.model = torch.hub.load('./', 'custom', path=model_name, force_reload=True, source='local', device='0')
-        self.model = model = torch.hub.load("ultralytics/yolov5", "yolov5s", device='0')  # or yolov5n - yolov5x6, custom
+        self.model = torch.hub.load("ultralytics/yolov5", "yolov5s", device='0', force_reload=True)  # or yolov5n - yolov5x6, custom
         self.model.classes = [0]  # Set the desired class
 
 

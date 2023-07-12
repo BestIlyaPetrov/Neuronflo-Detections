@@ -1,4 +1,0 @@
-
-Run model:
-
-python3 detect.py --weights ../trained_models/bestmaskv5.pt --source 1 --device cuda:0 —nosave 
