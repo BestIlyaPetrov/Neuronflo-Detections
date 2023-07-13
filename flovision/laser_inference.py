@@ -58,8 +58,10 @@ class LaserInferenceSystem:
 
         # Load the model
         # self.model = torch.hub.load('./', 'custom', path=model_name, force_reload=True, source='local', device='0')
-        self.model = torch.hub.load("ultralytics/yolov5", "yolov5s", device='0', force_reload=True)  # or yolov5n - yolov5x6, custom
-        self.model.classes = [0]  # Set the desired class
+        # self.model = torch.hub.load("ultralytics/yolov5", "yolov5s", device='0', force_reload=True)  # or yolov5n - yolov5x6, custom
+        self.model = torch.hub.load('./', 'custom', path=model_name, force_reload=True, source='local', device='0')
+
+        # self.model.classes = [0]  # Set the desired class
 
 
         # Set frame params
@@ -110,6 +112,7 @@ class LaserInferenceSystem:
             count = get_highest_index(dir_path) + 1 
             for img in frame_arr[0]:
                 cv2.imwrite(str(dir_path / f"laser_img_{count:04d}.jpg"), img)
+                print(f"Saved image: laser_img_{count:04d}.jpg")
                 count += 1 
         except Exception as e:
             print("Couldn't save the frames.")
@@ -172,7 +175,12 @@ class LaserInferenceSystem:
 
                 
                 if self.zones[0].current_count >= 1:
-                    # TEMPORARY LOGIC - made to be gathering data automatically for us to train a model
+                    frame1_array.append(myFrame1)
+                    if self.save:
+                        self.save_frames([frame1_array])
+
+
+                    """# TEMPORARY LOGIC - made to be gathering data automatically for us to train a model
                     if (time.time() - trigger_start) >= delta_T and detection_trigger_flag == True:
                         cnt +=1
                         trigger_start = time.time()
@@ -198,7 +206,7 @@ class LaserInferenceSystem:
                     detection_trigger_flag =False
 
                 zone_count = self.zones[0].current_count
-                frame1_array = []
+                frame1_array = []"""
                     
 
 

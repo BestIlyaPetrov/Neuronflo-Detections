@@ -26,7 +26,7 @@ def print_parameters():
 
 
 def main(
-    weights='../trained_models/bestmaskv5.pt',  # model path or triton URL,
+    weights='bestmaskv5.pt',  # model path or triton URL,
     display_video = False,
     save_frames = False,
     new_boxes = False
@@ -38,7 +38,7 @@ def main(
     try:
         # Initialize the model
         inference_obj= laser_inference.LaserInferenceSystem(
-            model_name = weights,
+            model_name = "custom_models/"+weights,
             video_res = video_res,
             border_thickness = border_thickness,
             display = display_video,
@@ -59,7 +59,7 @@ def parse_options():
     parser.add_argument('--display-video', action='store_true', help='show video feed')
     parser.add_argument('--save-frames', action='store_true', help='save detected frames')
     parser.add_argument('--new-boxes', action='store_true', help='create new bounding boxes')
-    parser.add_argument('--weights', nargs='+', type=str, default='../trained_models/bestmaskv5.pt', help='model path')
+    parser.add_argument('--weights', type=str, default='bestmaskv5.pt', help='model path')
 
     options = parser.parse_args()
     return options
