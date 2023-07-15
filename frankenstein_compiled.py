@@ -1,4 +1,4 @@
-from flovision import laser_inference, entrance_inference, comms, video
+from flovision import laser_inference, entrance_inference, comms, video, inference
 import cv2
 import argparse
 
@@ -37,15 +37,30 @@ def main(
 
     try:
         # Initialize the model
-        inference_obj= laser_inference.LaserInferenceSystem(
-            model_name = "custom_models/"+weights,
-            video_res = video_res,
-            border_thickness = border_thickness,
-            display = display_video,
-            save = save_frames,
-            bboxes = new_boxes
+        # inference_obj= laser_inference.LaserInferenceSystem(
+        #     model_name = "custom_models/"+weights,
+        #     video_res = video_res,
+        #     border_thickness = border_thickness,
+        #     display = display_video,
+        #     save = save_frames,
+        #     bboxes = new_boxes
 
-        )
+        # )
+
+        inference_obj = inference.EntranceInferenceSystem(
+            model_name = "custom_models/bestmaskv5.pt", 
+            video_res = video_res, 
+            border_thickness = border_thickness, 
+            display = display_video, 
+            save = save_frames, 
+            bboxes = new_boxes,
+            num_devices=2,
+            model_type="custom",
+            model_directory="./",
+            model_source="local",
+            detected_items=["goggles","mask"]
+            )
+
         #Run the model
         inference_obj.run(iou_thres, agnostic_nms)
     except KeyboardInterrupt:

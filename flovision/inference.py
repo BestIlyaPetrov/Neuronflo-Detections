@@ -61,7 +61,7 @@ class InferenceSystem:
             zone_polygons.append(coordinates)
 
         # Load the model
-        self.model = torch.hub.load(model_directory, model_source, path=model_name, force_reload=True,source=model_source, device='0') \
+        self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
                     if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0')
         
         # Set frame params
@@ -147,42 +147,43 @@ class InferenceSystem:
         print("Starting inference system")
 
         zone_count = 0 # count the number of zones
-        num_consecutive_frames = 3 # num_consecutive_frames that we want to window (to reduce jitter)
+        self.num_consecutive_frames = 3 # num_consecutive_frames that we want to window (to reduce jitter)
         
-        detections_array = []
-        array_for_frames = []
+        self.detections_array = []
+        self.array_for_frames = []
         cnt = 0
-        detection_trigger_flag = False
+        self.detection_trigger_flag = False
 
         while True:
             try:
                 # Main detection loop
-                captures = [cam.getFrame() for cam in self.cams]
-                retrieved = [capture[0] for capture in captures]
+                self.captures = [cam.getFrame() for cam in self.cams]
+                retrieved = [capture[0] for capture in self.captures]
                 if not all(retrieved):
                     continue
-
-                frame = np.hstack(tuple(capture[1] for capture in captures))
+                
+                self.captures = [capture[1] for capture in self.captures]
+                frame = np.hstack(tuple(capture[1] for capture in self.captures))
                 results = self.model(frame)
-                detections = sv.Detections.from_yolov5(results)
-                detections = detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
+                self.detections = sv.Detections.from_yolov5(results)
+                self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
 
                 # Annotations
                 mask = []
                 for zone, zone_annotator in zip(self.zones, self.zone_annotators):
-                    mask.append(zone.trigger(detections=detections))
-                    frame = self.box_annotator.annotate(scene=frame, detections=detections)
+                    mask.append(zone.trigger(detections=self.detections))
+                    frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
                     frame = zone_annotator.annotate(scene=frame)
 
                 # Split into different sets of detections depending on object, by bounding box
-                present_indices = [2* idx for idx in range(len(self.items))]
-                absent_indices = [2* idx + 1 for idx in range(len(self.items))]
-                item_sets = [[present, absent] for present, absent in zip(present_indices, absent_indices)]
-                item_detections = [detections[mask[i] % np.isin(detections.class_id, item_sets[i])] for i in range(len(item_sets))]
+                self.present_indices = [2* idx for idx in range(len(self.items))]
+                self.absent_indices = [2* idx + 1 for idx in range(len(self.items))]
+                item_sets = [[present, absent] for present, absent in zip(self.present_indices, self.absent_indices)]
+                self.item_detections = tuple([self.detections[mask[i] % np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
 
                 # TRIGGER EVENT
                 if self.trigger_event():
-                    detection_trigger_flag = True
+                    self.detection_trigger_flag = True
                     results_dict = results.pandas().xyxy[0].to_dict()
                     results_json = json.dumps(results_dict)
                     print()
@@ -190,10 +191,12 @@ class InferenceSystem:
                     print("RESULTS JSON: ", results_json)
                     print()
 
-                if detection_trigger_flag:
+                if self.detection_trigger_flag:
                     self.trigger_action()
-                    detection_trigger_flag = False
+                    self.detection_trigger_flag = False
 
+                self.other_actions()
+                
                 # Display frame
                 if self.display:
                     cv2.imshow('ComboCam', frame)
@@ -219,4 +222,96 @@ class InferenceSystem:
         Perform the trigger action
         """
         raise NotImplementedError
+    
 
+    def other_actions(self) -> None:
+        """
+        Perform other actions
+        """
+        pass
+
+class EntranceInferenceSystem(InferenceSystem):
+    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory="./", model_source='local', detected_items=[]) -> None:
+        self.zone_count = 0
+        self.cnt = 0
+        super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
+
+    def trigger_event(self) -> bool:
+
+        return self.zones[0].current_count > self.zone_count and self.detection_trigger_flag
+    
+    def trigger_action(self) -> None:
+        self.cnt += 1
+        self.detections_array.append(self.item_detections)
+        self.array_for_frames.append(self.captures)
+        if self.cnt >= self.num_consecutive_frames:
+            self.cnt = 0
+            self.detection_trigger_flag = False
+            the_detections = [[] for _ in range(len(self.items))]
+            for detected_items in self.detections_array:
+                for the_item in detected_items:
+                    if hasattr(the_item, 'class_id') and len(the_item.class_id) > 0:
+                        [the_detections[the_item.class_id[0]//2].append(int(ids)) for ids in the_item.class_id]
+                    
+            most_common_detections = self.present_indices
+            for i in range(len(self.items)):
+                if len(the_detections[i]):
+                    most_common_detections[i] = collections.Counter(the_detections[i]).most_common(1)[0][0]
+                    print(f"Most common detection for object {self.items[i]} is {most_common_detections[i]}")
+                else:
+                    print(f"No detections for object {self.items[i]}")
+                
+            # Pick thr least blurry image
+            least_blurry_images = [least_blurry_image_indx(self.captures[i]) for i in range(len(self.items))]
+
+            # Compliance Logic
+            compliant = False
+            if most_common_detections[0] == 0:
+                compliant =  False
+
+            elif most_common_detections[0] == 1:
+                compliant = True
+
+            bordered_frames = [draw_border(least_blurry_images[i],  compliant, self.border_thickness) for i in range(len(self.items))]
+            bordered_frame = np.hstack(tuple(bordered_frames))
+
+            data = {
+                'zone_name': '1',
+                'crossing_type': 'coming',
+                'compliant': str(compliant)
+            }
+
+            success, encoded_image = cv2.imencode('.jpg', bordered_frames[0])
+            if success:
+                image_bytes = bytearray(encoded_image)
+                sendImageToServer(image_bytes, data, IP_address=self.server_IP)
+
+                print()
+                print("########### DETECTION MADE #############")
+  
+                print("########### END OF DETECTION #############")
+                print()
+
+            else:
+                raise ValueError("Could not encode the frame as a JPEG image")
+            
+            if self.save:
+                self.save_frames(self.array_for_frames)
+
+            self.detections_array = []
+            self.array_for_frames = []
+    
+    def other_actions(self) -> None:
+        self.zone_count = self.zones[0].current_count
+    
+
+class LaserInferenceSystem(InferenceSystem):
+    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory="./", model_source='local', detected_items=[]) -> None:
+        
+        super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
+
+    def trigger_event(self) -> bool:
+        return super().trigger_event()
+    
+    def trigger_action(self) -> None:
+        return super().trigger_action()
