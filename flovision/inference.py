@@ -165,7 +165,7 @@ class InferenceSystem:
                     continue
                 
                 self.captures = [capture[1] for capture in self.captures]
-                frame = np.hstack(tuple(capture[1] for capture in self.captures))
+                frame = np.hstack(tuple(capture for capture in self.captures))
                 results = self.model(frame)
                 self.detections = sv.Detections.from_yolov5(results)
                 self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
