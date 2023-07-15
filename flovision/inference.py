@@ -113,6 +113,8 @@ class InferenceSystem:
         for cam in self.cams:
             cam.capture.release()
 
+        self.jetson.cleanup()
+
         cv2.destroyAllWindows()
         exit(1)
 
@@ -179,7 +181,7 @@ class InferenceSystem:
                 self.present_indices = [2* idx for idx in range(len(self.items))]
                 self.absent_indices = [2* idx + 1 for idx in range(len(self.items))]
                 item_sets = [[present, absent] for present, absent in zip(self.present_indices, self.absent_indices)]
-                self.item_detections = tuple([self.detections[mask[i] % np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
+                self.item_detections = tuple([self.detections[mask[i] & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
 
                 # TRIGGER EVENT
                 if self.trigger_event():
