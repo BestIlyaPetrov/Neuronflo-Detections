@@ -200,11 +200,11 @@ class EntranceInferenceSystem:
                         # print(detections_array)
                         for goggle_det, shoe_det in detections_array:
                             print("Goggle detections: ", goggle_det)
-                            if hasattr(goggle_det, 'class_id') and len(goggle_det.class_id > 0):
+                            if hasattr(goggle_det, 'class_id') and len(goggle_det.class_id) > 0:
                                 [goggle_detections.append(int(ids)) for ids in goggle_det.class_id]
                                 # print("len:",len(goggle_det.class_id))
                                 # print("goggle detections: ",goggle_detections)
-                            if hasattr(shoe_det, 'class_id') and len(shoe_det.class_id > 0):
+                            if hasattr(shoe_det, 'class_id') and len(shoe_det.class_id) > 0:
                                 [shoe_detections.append(int(ids)) for ids in shoe_det.class_id]
                                 # print("shoe detections: ",shoe_det)
                            
