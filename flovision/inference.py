@@ -23,7 +23,7 @@ class InferenceSystem:
     """
     General class for inference system
     """
-    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory="./", model_source='local', detected_items=[]) -> None:
+    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[]) -> None:
         """
         param:
             model_name: name of the model to be used for inference
@@ -35,14 +35,14 @@ class InferenceSystem:
             num_devices: number of devices to be used for inference
             model_type: type of the model to be used for inference
             model_directory: directory where the model is stored
-            model_source: source of the model
+            model_source: source of the model, usually custom
             detected_items: list of items to be detected
 
         return:
             None
         """
 
-        self.server_IP = findLocalServer()
+        self.server_IP = findLocalServer() 
         cap_index = get_device_indices(quantity = num_devices)
 
         # Initialize the cameras
@@ -62,7 +62,7 @@ class InferenceSystem:
 
         # Load the model
         self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
-                    if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0')
+                    if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
         
         # Set frame params
         self.frame_width = video_res[0] * num_devices
@@ -96,7 +96,7 @@ class InferenceSystem:
 
         self.box_annotator = sv.BoxAnnotator(thickness=2, text_thickness=2, text_scale=1)
 
-        # Directory to save the frames
+        # Directory to save the frames - for training
         self.save_dir = Path.cwd().parent / 'saved_frames'
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -104,6 +104,8 @@ class InferenceSystem:
         self.items = detected_items
         self.item_dirs = [self.save_dir / item for item in detected_items]
         [item_dir.mkdir(parents=True, exist_ok=True) for item_dir in self.item_dirs]
+
+        # TODO: add functionality to save text boxes along with the frames
 
     def stop(self):
         """
@@ -165,7 +167,7 @@ class InferenceSystem:
                     continue
                 
                 self.captures = [capture[1] for capture in self.captures]
-                frame = np.hstack(tuple(capture for capture in self.captures))
+                frame = np.hstack(tuple(self.captures))
                 results = self.model(frame)
                 self.detections = sv.Detections.from_yolov5(results)
                 self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
@@ -195,7 +197,6 @@ class InferenceSystem:
 
                 if self.detection_trigger_flag:
                     self.trigger_action()
-                    self.detection_trigger_flag = False
 
                 self.other_actions()
                 
@@ -240,7 +241,7 @@ class EntranceInferenceSystem(InferenceSystem):
 
     def trigger_event(self) -> bool:
 
-        return self.zones[0].current_count > self.zone_count and self.detection_trigger_flag
+        return self.zones[0].current_count > self.zone_count and (not self.detection_trigger_flag)
     
     def trigger_action(self) -> None:
         self.cnt += 1
@@ -252,8 +253,8 @@ class EntranceInferenceSystem(InferenceSystem):
             the_detections = [[] for _ in range(len(self.items))]
             for detected_items in self.detections_array:
                 for the_item in detected_items:
-                    if hasattr(the_item, 'class_id') and len(the_item.class_id) > 0:
-                        [the_detections[the_item.class_id[0]//2].append(int(ids)) for ids in the_item.class_id]
+                    if hasattr(the_item, 'class_id') and len(the_item.class_id > 0):
+                        [the_detections[the_item.class_id[0]//2 + 1].append(int(ids)) for ids in the_item.class_id]
                     
             most_common_detections = self.present_indices
             for i in range(len(self.items)):
