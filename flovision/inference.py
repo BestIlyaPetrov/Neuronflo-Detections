@@ -161,12 +161,19 @@ class InferenceSystem:
         while True:
             try:
                 # Main detection loop
-                self.captures = [cam.getFrame() for cam in self.cams]
-                retrieved = [capture[0] for capture in self.captures]
-                if not all(retrieved):
+                self.captures = []
+                frame_unavailable = False
+                for cam in self.cams:
+                    ret, frame = cam.getFrame()
+                    if not ret:
+                        frame_unavailable = True
+                        break
+
+                    self.captures.append(frame)
+
+                if frame_unavailable:
                     continue
-                
-                self.captures = [capture[1] for capture in self.captures]
+              
                 frame = np.hstack(tuple(self.captures))
                 results = self.model(frame)
                 self.detections = sv.Detections.from_yolov5(results)
