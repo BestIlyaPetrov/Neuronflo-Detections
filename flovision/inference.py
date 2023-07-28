@@ -253,8 +253,8 @@ class EntranceInferenceSystem(InferenceSystem):
             the_detections = [[] for _ in range(len(self.items))]
             for detected_items in self.detections_array:
                 for the_item in detected_items:
-                    if hasattr(the_item, 'class_id') and len(the_item.class_id > 0):
-                        [the_detections[the_item.class_id[0]//2 + 1].append(int(ids)) for ids in the_item.class_id]
+                    if hasattr(the_item, 'class_id') and len(the_item.class_id) > 0:
+                        [the_detections[detected_items.index(the_item)].append(int(ids)) for ids in the_item.class_id]
                     
             most_common_detections = self.present_indices
             for i in range(len(self.items)):
@@ -264,7 +264,7 @@ class EntranceInferenceSystem(InferenceSystem):
                 else:
                     print(f"No detections for object {self.items[i]}")
                 
-            # Pick thr least blurry image
+            # Pick the least blurry image
             least_blurry_images = [least_blurry_image_indx(self.captures[i]) for i in range(len(self.items))]
 
             # Compliance Logic
