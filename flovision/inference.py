@@ -321,7 +321,10 @@ class LaserInferenceSystem(InferenceSystem):
         super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
 
     def trigger_event(self) -> bool:
-        return super().trigger_event()
+        # Trigger event for laser
+        return self.zones[0].current_count >= 1
     
     def trigger_action(self) -> None:
-        return super().trigger_action()
+        if self.save:
+            self.save_frames(self.captures)
+    
