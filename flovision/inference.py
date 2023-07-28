@@ -217,13 +217,13 @@ class InferenceSystem:
         return:
             True if a trigger event has occurred, False otherwise
         """
-        raise NotImplementedError
+        raise NotImplementedError("Trigger event not implemented")
     
     def trigger_action(self) -> None:
         """
         Perform the trigger action
         """
-        raise NotImplementedError
+        raise NotImplementedError("Trigger action not implemented")
     
 
     def other_actions(self) -> None:
