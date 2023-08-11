@@ -58,7 +58,7 @@ class LaserInferenceSystem:
 
         # Load the model
         # self.model = torch.hub.load('./', 'custom', path=model_name, force_reload=True, source='local', device='0')
-        # self.model = torch.hub.load("ultralytics/yolov5", "yolov5s", device='0', force_reload=True)  # or yolov5n - yolov5x6, custom
+        # self.model = torch.hub.load("ultralytics/yolov5", "yolov5se, device='0', force_reload=True)  # or yolov5n - yolov5x6, custom
         self.model = torch.hub.load('./', 'custom', path=model_name, force_reload=True, source='local', device='0')
 
         # self.model.classes = [0]  # Set the desired class

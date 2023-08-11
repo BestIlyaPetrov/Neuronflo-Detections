@@ -18,6 +18,7 @@ from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
 from zeroconf import ServiceBrowser, Zeroconf
+from face_id import face_recog
 
 class InferenceSystem:
     """
@@ -328,3 +329,27 @@ class LaserInferenceSystem(InferenceSystem):
         if self.save:
             self.save_frames(self.captures)
     
+class FaceRecognitionSystem(InferenceSystem):
+    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory="./", model_source='local', detected_items=[]) -> None:
+        
+        super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
+
+    def trigger_event(self) -> bool:
+        # Trigger event for face recognition
+        return self.zones[0].current_count >= 1
+    
+    def trigger_action(self) -> None:
+        if self.save:
+            self.save_frames(self.captures)
+
+class EnvisionInferenceSystem(InferenceSystem):
+    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[]) -> None:
+        super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
+
+    def trigger_event(self) -> bool:
+        # Trigger event for envision
+        return self.zones[0].current_count >= 1
+    
+    def trigger_action(self) -> None:
+        if self.save:
+            self.save_frames(self.captures)
