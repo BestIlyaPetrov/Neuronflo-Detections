@@ -17,7 +17,6 @@ from .video import draw_border, region_dimensions, vStream, least_blurry_image_i
 from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
-from zeroconf import ServiceBrowser, Zeroconf
 from .face_id import face_recog
 
 class InferenceSystem:
@@ -38,12 +37,15 @@ class InferenceSystem:
             model_directory: directory where the model is stored
             model_source: source of the model, usually custom
             detected_items: list of items to be detected
+            server_IP: specify which server to send violations to
+            annotate: set true to draw detection boxes in images
 
         return:
             None
         """
 
-        self.server_IP = findLocalServer() 
+        if server_IP == "local":
+            self.server_IP = findLocalServer()
         cap_index = get_device_indices(quantity = num_devices)
 
         # Initialize the cameras
@@ -61,17 +63,25 @@ class InferenceSystem:
             coordinates[:,0] += i*video_res[0] # shift the x coordinates
             zone_polygons.append(coordinates)
 
+        # TODO: improve zone management
+        # 1. Need several zones per camera
+        # 2. Need to neatly store the coordinates - not just coordinates0.json and coordinates1.json
+
         # Load the model
         self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
                     if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
         
+        # Create ByteTracker objects for each camera feed
+        self.trackers = [sv.ByteTrack() for i in range(num_devices)]
+
         # Set frame params
-        self.frame_width = video_res[0] * num_devices
+        self.frame_width = video_res[0]
         self.frame_height = video_res[1]
         self.frame_size = (self.frame_width, self.frame_height)
         self.border_thickness = border_thickness
         self.display = display
         self.save = save
+        self.annotate = annotate
 
         # Set the zone params
         colors = sv.ColorPalette.default()
@@ -95,7 +105,7 @@ class InferenceSystem:
             in enumerate(self.zones)
         ]
 
-        self.box_annotator = sv.BoxAnnotator(thickness=2, text_thickness=2, text_scale=1)
+        self.box_annotator = sv.BoxAnnotator(thickness=1, text_thickness=1, text_scale=1)
 
         # Directory to save the frames - for training
         self.save_dir = Path.cwd().parent / 'saved_frames'
@@ -158,6 +168,11 @@ class InferenceSystem:
         self.array_for_frames = []
         cnt = 0
         self.detection_trigger_flag = False
+
+        # Split detections into different sets depending on object, by bounding box (aka [goggles, no_goggles])
+        self.present_indices = [2* idx for idx in range(len(self.items))]
+        self.absent_indices = [2* idx + 1 for idx in range(len(self.items))]
+        item_sets = [[present, absent] for present, absent in zip(self.present_indices, self.absent_indices)]
 
         while True:
             try:
