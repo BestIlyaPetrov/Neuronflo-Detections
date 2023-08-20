@@ -118,6 +118,22 @@ class InferenceSystem:
 
         # TODO: add functionality to save text boxes along with the frames
 
+    def ByteTracker_implementation(self, detections, byteTracker):
+        # byteTracker is the sv.ByteTrack() object 
+        byte_tracker = byteTracker
+        new_detections = []
+        if len(detections) != 0:
+            new_detections = byte_tracker.update_with_detections(detections)
+            #Sort both detections and new_detections based on confidence scores
+            sorted_original_indices = np.argsort(detections.confidence)
+            sorted_new_indices = np.argsort(new_detections.confidence)
+            # Create a mapping of indices between the sorted original detections and the sorted new detections
+            index_mapping = dict(zip(sorted_new_indices, sorted_original_indices))
+            # Update the class_ids in new_detections based on this mapping
+            for new_idx, original_idx in index_mapping.items():
+                new_detections.class_id[new_idx] = detections.class_id[original_idx]
+        return new_detections
+
     def stop(self):
         """
         Stop the inference system
@@ -190,42 +206,50 @@ class InferenceSystem:
                 if frame_unavailable:
                     continue
               
-                frame = np.hstack(tuple(self.captures))
-                results = self.model(frame)
-                self.detections = sv.Detections.from_yolov5(results)
-                self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
+                # frame = np.hstack(tuple(self.captures))
 
-                # Annotations
-                mask = []
-                for zone, zone_annotator in zip(self.zones, self.zone_annotators):
-                    mask.append(zone.trigger(detections=self.detections))
-                    frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
-                    frame = zone_annotator.annotate(scene=frame)
+                #Iterating over frames for each of the connected cameras
+                # TODO: ENSURE THIS WORKS FOR SEVERAL CAMERA STREAMS
+                camera_num = 0
+                for frame in self.captures:
 
-                # Split into different sets of detections depending on object, by bounding box
-                self.present_indices = [2* idx for idx in range(len(self.items))]
-                self.absent_indices = [2* idx + 1 for idx in range(len(self.items))]
-                item_sets = [[present, absent] for present, absent in zip(self.present_indices, self.absent_indices)]
-                self.item_detections = tuple([self.detections[mask[i] & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
+                    results = self.model(frame)
+                    self.detections = sv.Detections.from_yolov5(results)
+                    self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
+                    self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[camera_num])
 
-                # TRIGGER EVENT
-                if self.trigger_event():
-                    self.detection_trigger_flag = True
-                    results_dict = results.pandas().xyxy[0].to_dict()
-                    results_json = json.dumps(results_dict)
-                    print()
-                    print("RESULTS: ", results)
-                    print("RESULTS JSON: ", results_json)
-                    print()
+                    if self.annotate:
+                        # Annotations
+                        mask = []
+                        for zone, zone_annotator in zip(self.zones, self.zone_annotators):
+                            mask.append(zone.trigger(detections=self.detections)) #this changes self.zones.current_count
+                            frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
+                            frame = zone_annotator.annotate(scene=frame)
 
-                if self.detection_trigger_flag:
-                    self.trigger_action()
+                    # Split into different sets of detections depending on object, by bounding box
+                    self.item_detections = tuple([self.detections[mask[i] & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
 
-                self.other_actions()
+                    # TRIGGER EVENT
+                    if self.trigger_event():
+                        self.detection_trigger_flag = True
+                        results_dict = results.pandas().xyxy[0].to_dict()
+                        results_json = json.dumps(results_dict)
+                        print()
+                        print("RESULTS: ", results)
+                        print("RESULTS JSON: ", results_json)
+                        print()
+
+                    if self.detection_trigger_flag:
+                        self.trigger_action()
+
+                    self.other_actions()
                 
-                # Display frame
-                if self.display:
-                    cv2.imshow('ComboCam', frame)
+                    # Display frame
+                    if self.display:
+                        cv2.imshow(f'Camera {self.cams[camera_num].src}', frame)
+
+                    # Update iteration index for the loop    
+                    camera_num += 1
 
             except Exception as e:
                 print("Frame unavailable, error was: ", e)
