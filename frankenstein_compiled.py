@@ -29,7 +29,9 @@ def main(
     weights='bestmaskv5.pt',  # model path or triton URL,
     display_video = False,
     save_frames = False,
-    new_boxes = False
+    new_boxes = False,
+    annotate = False,
+    server_IP = 'local'
     ):
 
     print_parameters()
@@ -58,7 +60,10 @@ def main(
             model_type="custom",
             model_directory="./",
             model_source="local",
-            detected_items=["goggles","mask"]
+            detected_items=["goggles","mask"],
+            server_IP = 'local',
+            annotate = annotate
+
             )
 
         #Run the model
@@ -75,6 +80,8 @@ def parse_options():
     parser.add_argument('--save-frames', action='store_true', help='save detected frames')
     parser.add_argument('--new-boxes', action='store_true', help='create new bounding boxes')
     parser.add_argument('--weights', type=str, default='bestmaskv5.pt', help='model path')
+    parser.add_argument('--annotate', action='store_true', help='return images with detection boxes')
+    parser.add_argument('--server_IP', type=str, default='local', help='IP of the server the images are being sent to')
 
     options = parser.parse_args()
     return options

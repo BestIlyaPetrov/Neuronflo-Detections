@@ -18,13 +18,13 @@ from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
 from zeroconf import ServiceBrowser, Zeroconf
-from face_id import face_recog
+from .face_id import face_recog
 
 class InferenceSystem:
     """
     General class for inference system
     """
-    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[]) -> None:
+    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[], server_IP='local', annotate=False) -> None:
         """
         param:
             model_name: name of the model to be used for inference
@@ -241,11 +241,18 @@ class InferenceSystem:
         """
         pass
 
+
 class EntranceInferenceSystem(InferenceSystem):
-    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory="./", model_source='local', detected_items=[]) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         self.zone_count = 0
         self.cnt = 0
-        super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
+
+        # If need to overwrite a particular argument do the following. 
+        # Let's say need to overwrite the 'model_directory' argument
+        # kwargs['model_directory'] = 'my_new_directory_path'
+
+        super().__init__(*args, **kwargs)
+
 
     def trigger_event(self) -> bool:
 
