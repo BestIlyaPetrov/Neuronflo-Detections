@@ -214,36 +214,37 @@ class InferenceSystem:
 
                 #Iterating over frames for each of the connected cameras
                 # TODO: ENSURE THIS WORKS FOR SEVERAL CAMERA STREAMS
-                self.camera_num = 0
-                for frame in self.captures:
+                
+                self.camera_num = 0 # the index of the vide stream being processed
 
+                # Iterate over cameras, 1 frame from each  
+                for frame in self.captures:
+                    # Send through the model
                     results = self.model(frame)
+                    # Convert the detections to the Supervision-compatible format
                     self.detections = sv.Detections.from_yolov5(results)
+                    # Run NMS to remove double detections
                     self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
+                    # If detections present, track them. Assign track_id
                     if len(self.detections) > 0:
                         self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
 
-                    # # Annotations
-                    # mask = []
                     
-                    # for zone, zone_annotator in zip(self.zones, self.zone_annotators):
-                    #     mask.append(zone.trigger(detections=self.detections)) #this changes self.zones.current_count
-                    #     if self.annotate:
-                    #         frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
-                    #         frame = zone_annotator.annotate(scene=frame)
-                    
-                    #We are assuming there's 1 zone per camera
+                    # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
                     mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
+                    
+                    # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate:
                         frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
                         frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
 
-                    # Split into different sets of detections depending on object, by bounding box
+                    # Split into different sets of detections depending on object, by bounding box (aka tuple(goggles/no_goggles, shoes/no_shoes) )
                     self.item_detections = tuple([self.detections[mask & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
 
-                    # TRIGGER EVENT
+                    # TRIGGER EVENT - TODO: ADD MULTIPLE TRIGGER EVENTS FUNCTIONALITY
                     if self.trigger_event():
                         self.detection_trigger_flag = True
+                        
                         results_dict = results.pandas().xyxy[0].to_dict()
                         results_json = json.dumps(results_dict)
                         print()
@@ -303,7 +304,7 @@ class EntranceInferenceSystem(InferenceSystem):
 
         super().__init__(*args, **kwargs)
         self.zone_count = [0 for i in range(len(self.cams))]
-        self.cnt = [0 for i in range(len(self.cams))]
+        self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
 
 
     def trigger_event(self) -> bool:
@@ -311,20 +312,31 @@ class EntranceInferenceSystem(InferenceSystem):
         return int(self.zones[0].current_count) > self.zone_count[0] and (not self.detection_trigger_flag) #FIX THIS FLAG LOGIC
     
     def trigger_action(self) -> None:
-        self.cnt[self.camera_num] += 1
-        self.detections_array[self.camera_num].append(self.item_detections)
-        self.array_for_frames[self.camera_num].append(self.captures[self.camera_num])
-        if self.cnt[self.camera_num] >= self.num_consecutive_frames:
+        # Count how many images we already took
+        self.consecutive_frames_cnt[self.camera_num] += 1
 
-            self.cnt[self.camera_num] = 0
+        # Append an detections from self.camera_num source to the array for detection jitter reduction
+        self.detections_array[self.camera_num].append(self.item_detections)
+
+        # Append an image from self.camera_num source to the array for least blurry choice
+        self.array_for_frames[self.camera_num].append(self.captures[self.camera_num])
+
+        # After N consecutive frames collected, check what was the most common detection for each object
+        if self.consecutive_frames_cnt[self.camera_num] >= self.num_consecutive_frames:
+
+            # Reset the consecutive frames count
+            self.consecutive_frames_cnt[self.camera_num] = 0
+
+            # Reset the trigger flag as well so we can have another trigger action
             self.detection_trigger_flag = False
 
+            # For each detected item (aka goggles vs no_goggles being 1 item), append detected class_id from the last N frames 
             the_detections = [[] for _ in range(len(self.items))]
             for detected_items in self.detections_array[self.camera_num]:
                 for the_item in detected_items:
                     if hasattr(the_item, 'class_id') and len(the_item.class_id) > 0:
                         [the_detections[detected_items.index(the_item)].append(int(ids)) for ids in the_item.class_id]
-                    
+            # Check the most common detection class_id and choose prevalent one (aka goggle, no_goggle, goggle, goggle -> goggle)
             most_common_detections = self.present_indices
             for i in range(len(self.items)):
                 if len(the_detections[i]):
@@ -333,9 +345,8 @@ class EntranceInferenceSystem(InferenceSystem):
                 else:
                     print(f"No detections for object {self.items[i]}")
                 
-            # Pick the least blurry image
+            # Pick the least blurry image to send to the server (we assume images don't vary that much within a small enough del_t or in this case N = self.num_consecutive_frames)
             least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
-            # least_blurry_images = [least_blurry_image_indx(self.captures[i]) for i in range(len(self.items))]
 
             # Compliance Logic
             compliant = False
@@ -346,32 +357,22 @@ class EntranceInferenceSystem(InferenceSystem):
                 compliant = True
 
             bordered_frame = draw_border(self.array_for_frames[self.camera_num][least_blurry_indx],  compliant, self.border_thickness)
-            # bordered_frames = [draw_border(least_blurry_images[i],  compliant, self.border_thickness) for i in range(len(self.items))]
-            # bordered_frame = np.hstack(tuple(bordered_frames))
 
+            # Pack the data for the server to process - TODO: figure out what data we are sending to the server - what can we gather?
             data = {
                 'zone_name': '1',
-                'crossing_type': 'coming',
+                'crossing_type': 'coming', #or leaving
                 'compliant': str(compliant)
             }
 
-            success, encoded_image = cv2.imencode('.jpg', bordered_frame)
-            if success:
-                image_bytes = bytearray(encoded_image)
-                sendImageToServer(image_bytes, data, IP_address=self.server_IP)
+            # send the actual image to the server
+            sendImageToServer(bordered_frame, data, IP_address=self.server_IP)
 
-                print()
-                print("########### DETECTION MADE #############")
-  
-                print("########### END OF DETECTION #############")
-                print()
-
-            else:
-                raise ValueError("Could not encode the frame as a JPEG image")
-            
+            # Save the image locally for further model retraining
             if self.save:
                 self.save_frames(self.array_for_frames[self.camera_num])
 
+            # Reset the arrays for the data and the images, since we just sent it to the server
             self.detections_array[self.camera_num] = []
             self.array_for_frames[self.camera_num] = []
     

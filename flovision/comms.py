@@ -43,11 +43,11 @@ def authenticate(identifier, url):
 
 
 
-def sendImageToServer(image_bytes, image_data, IP_address):
+def sendImageToServer(image, image_data, IP_address):
     global auth_token
     url = f'http://{IP_address}:80/'
     if auth_token == "":
-        auth_token, csrf_token = authenticate(identifier = "jetson01", url=url)
+        auth_token, csrf_token = authenticate(identifier = "jetson01", url=url) # TODO: add the identifier to dotenv
         # print("New auth token is: ", auth_token)
         print("Identifier got confirmed, so I received new auth token. Proceeding to send the image")
     else: 
@@ -69,8 +69,19 @@ def sendImageToServer(image_bytes, image_data, IP_address):
     # Convert the timestamp to a string in the dd-mm-yy_hh-mm-ss format
     timestamp_str = time.strftime('%d-%m-%y_%H-%M-%S', time.localtime(timestamp))
 
-    # Print the timestamp string
-    # print(timestamp_str)
+    # convert image data to the correct format
+    success, encoded_image = cv2.imencode('.jpg', image)
+    if success:
+        image_bytes = bytearray(encoded_image)
+
+        print()
+        print("########### DETECTION MADE #############")
+        print(image_data)
+        print("########### END OF DETECTION #############")
+        print()
+
+    else:
+        raise ValueError("Could not encode the frame as a JPEG image")
 
     response = requests.post(url+'api/entrance_update', files={'image': (timestamp_str+'.jpg', image_bytes)}, data=image_data, headers=headers)
 
