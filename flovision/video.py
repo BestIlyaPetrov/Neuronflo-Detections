@@ -89,19 +89,27 @@ class vStream:
         self.capture=cv2.VideoCapture(src)
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        # success = self.capture.set(cv2.CAP_PROP_FPS, 30.0)   
-        self.thread = Thread(target=self.update, args=())
-        self.thread.daemon=True
-        self.thread.start()
+        # success = self.capture.set(cv2.CAP_PROP_FPS, 30.0)
         self.src = src
         self.new_frame_available = False
         self.frame = None
+        
+        self.thread = Thread(target=self.update, args=())
+        self.thread.daemon=True
+        self.thread.start()
+        
+
+
+        
     def update(self):
         while True:
-            if self.new_frame_available == False:
-                ret, self.frame = self.capture.read()
-                if ret:
-                    self.new_frame_available = True
+            try: 
+                if self.new_frame_available == False:
+                    ret, self.frame = self.capture.read()
+                    if ret:
+                        self.new_frame_available = True
+            except:
+                print(f"ERR: Camera {self.src} could not be read")
 
 
     def getFrame(self):

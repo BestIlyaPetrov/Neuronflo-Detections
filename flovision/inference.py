@@ -43,6 +43,9 @@ class InferenceSystem:
         return:
             None
         """
+        # Load the model
+        self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
+                    if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
 
         if server_IP == "local":
             self.server_IP = findLocalServer()
@@ -67,9 +70,7 @@ class InferenceSystem:
         # 1. Need several zones per camera
         # 2. Need to neatly store the coordinates - not just coordinates0.json and coordinates1.json
 
-        # Load the model
-        self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
-                    if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
+
         
         # Create ByteTracker objects for each camera feed
         self.trackers = [sv.ByteTrack() for i in range(num_devices)]
@@ -182,12 +183,12 @@ class InferenceSystem:
         
         # self.detections_array = []
         # self.array_for_frames = []
-        self.detections_array = [[] for _ in range(len(self.zones))]
+        self.detections_array = [[] for _ in range(len(self.cams))]
 
-        self.array_for_frames = [[] for _ in range(len(self.zones))]
+        self.array_for_frames = [[] for _ in range(len(self.cams))]
 
         cnt = 0
-        self.detection_trigger_flag = False
+        self.detection_trigger_flag = [False for _ in range(len(self.cams))]
 
         # Split detections into different sets depending on object, by bounding box (aka [goggles, no_goggles])
         self.present_indices = [2* idx for idx in range(len(self.items))]
@@ -200,8 +201,10 @@ class InferenceSystem:
                 self.captures = []
                 frame_unavailable = False
                 for cam in self.cams:
+                    print(f"Trying to get frame from cam{cam.src}")
                     ret, frame = cam.getFrame()
                     if not ret:
+                        print("not ret nihuya")
                         frame_unavailable = True
                         break
 
@@ -215,16 +218,20 @@ class InferenceSystem:
                 #Iterating over frames for each of the connected cameras
                 # TODO: ENSURE THIS WORKS FOR SEVERAL CAMERA STREAMS
                 
-                self.camera_num = 0 # the index of the vide stream being processed
+                self.camera_num = 0 # the index of the video stream being processed
 
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
+                    print("processing frame ", self.camera_num)
                     # Send through the model
                     results = self.model(frame)
+                    print("results")
                     # Convert the detections to the Supervision-compatible format
                     self.detections = sv.Detections.from_yolov5(results)
+                    print("detections1")
                     # Run NMS to remove double detections
                     self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
+                    print("detections2")
                     # If detections present, track them. Assign track_id
                     if len(self.detections) > 0:
                         self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
@@ -232,18 +239,22 @@ class InferenceSystem:
                     
                     # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
                     mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
+                    print("mask")
                     
                     # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate:
                         frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
                         frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
+                    print("annotate")
 
                     # Split into different sets of detections depending on object, by bounding box (aka tuple(goggles/no_goggles, shoes/no_shoes) )
                     self.item_detections = tuple([self.detections[mask & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
+                    print("tuple detctions")
 
                     # TRIGGER EVENT - TODO: ADD MULTIPLE TRIGGER EVENTS FUNCTIONALITY
                     if self.trigger_event():
-                        self.detection_trigger_flag = True
+                        print("trigger_event")
+                        self.detection_trigger_flag[self.camera_num] = True
                         
                         results_dict = results.pandas().xyxy[0].to_dict()
                         results_json = json.dumps(results_dict)
@@ -252,7 +263,8 @@ class InferenceSystem:
                         print("RESULTS JSON: ", results_json)
                         print()
 
-                    if self.detection_trigger_flag:
+                    if self.detection_trigger_flag[self.camera_num]:
+                        print("trigger action")
                         self.trigger_action()
 
                     self.other_actions()
@@ -309,7 +321,7 @@ class EntranceInferenceSystem(InferenceSystem):
 
     def trigger_event(self) -> bool:
 
-        return int(self.zones[0].current_count) > self.zone_count[0] and (not self.detection_trigger_flag) #FIX THIS FLAG LOGIC
+        return int(self.zones[self.camera_num].current_count) > self.zone_count[self.camera_num] and (not self.detection_trigger_flag[self.camera_num]) #FIX THIS FLAG LOGIC
     
     def trigger_action(self) -> None:
         # Count how many images we already took
@@ -328,7 +340,7 @@ class EntranceInferenceSystem(InferenceSystem):
             self.consecutive_frames_cnt[self.camera_num] = 0
 
             # Reset the trigger flag as well so we can have another trigger action
-            self.detection_trigger_flag = False
+            self.detection_trigger_flag[self.camera_num] = False
 
             # For each detected item (aka goggles vs no_goggles being 1 item), append detected class_id from the last N frames 
             the_detections = [[] for _ in range(len(self.items))]
@@ -392,7 +404,7 @@ class LaserInferenceSystem(InferenceSystem):
     
     def trigger_action(self) -> None:
         print("Laser Cutter inference successfully launched")
-        self.detection_trigger_flag = False
+        self.detection_trigger_flag[self.camera_num] = False
         byte_tracker = sv.ByteTracker()
       
         # Run Inference
@@ -405,7 +417,7 @@ class LaserInferenceSystem(InferenceSystem):
         detections = detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
         
         # Check if the distance metric has been violated
-        self.detection_trigger_flag, detection_info = self.trigger_event(detections=detections)
+        self.detection_trigger_flag[self.camera_num], detection_info = self.trigger_event(detections=detections)
         # The detection_info variable will hold a tuple that
         # will be the indices for the objects in violation
         
@@ -429,14 +441,14 @@ class FaceRecognitionSystem(InferenceSystem):
 
 class EnvisionInferenceSystem(InferenceSystem):
     def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[]) -> None:
-        self.detection_trigger_flag = False
+        self.detection_trigger_flag[self.camera_num] = False
         super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
     
     
     
     def run(self, iou_thres, agnostic_nms):
         print("Inference successfully launched")
-        self.detection_trigger_flag = False
+        self.detection_trigger_flag[self.camera_num] = False
         byte_tracker = sv.ByteTracker()
         while True:
             try:
@@ -459,7 +471,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 detections2 = detections2.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
                 
                 # Check if the distance metric has been violated
-                self.detection_trigger_flag, detection_info = self.trigger_event(detections=detections)
+                self.detection_trigger_flag[self.camera_num], detection_info = self.trigger_event(detections=detections)
                 # The detection_info variable will hold a tuple that
                 # will be the indices for the objects in violation
                 

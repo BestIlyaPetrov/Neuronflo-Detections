@@ -26,7 +26,7 @@ def print_parameters():
 
 
 def main(
-    weights='bestmaskv5.pt',  # model path or triton URL,
+    weights='custom_models/bestmaskv5.pt',  # model path or triton URL,
     display_video = False,
     save_frames = False,
     new_boxes = False,
