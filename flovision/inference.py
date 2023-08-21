@@ -60,7 +60,7 @@ class InferenceSystem:
         func = create_bounding_boxes if bboxes else load_bounding_boxes
         for i, cam in enumerate(self.cams):
             coordinates = func(cam)
-            coordinates[:,0] += i*video_res[0] # shift the x coordinates
+            # coordinates[:,0] += i*video_res[0] # shift the x coordinates
             zone_polygons.append(coordinates)
 
         # TODO: improve zone management
@@ -180,8 +180,12 @@ class InferenceSystem:
         zone_count = 0 # count the number of zones
         self.num_consecutive_frames = 3 # num_consecutive_frames that we want to window (to reduce jitter)
         
-        self.detections_array = []
-        self.array_for_frames = []
+        # self.detections_array = []
+        # self.array_for_frames = []
+        self.detections_array = [[] for _ in range(len(self.zones))]
+
+        self.array_for_frames = [[] for _ in range(len(self.zones))]
+
         cnt = 0
         self.detection_trigger_flag = False
 
@@ -210,24 +214,32 @@ class InferenceSystem:
 
                 #Iterating over frames for each of the connected cameras
                 # TODO: ENSURE THIS WORKS FOR SEVERAL CAMERA STREAMS
-                camera_num = 0
+                self.camera_num = 0
                 for frame in self.captures:
 
                     results = self.model(frame)
                     self.detections = sv.Detections.from_yolov5(results)
                     self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
-                    self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[camera_num])
+                    if len(self.detections) > 0:
+                        self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
 
+                    # # Annotations
+                    # mask = []
+                    
+                    # for zone, zone_annotator in zip(self.zones, self.zone_annotators):
+                    #     mask.append(zone.trigger(detections=self.detections)) #this changes self.zones.current_count
+                    #     if self.annotate:
+                    #         frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
+                    #         frame = zone_annotator.annotate(scene=frame)
+                    
+                    #We are assuming there's 1 zone per camera
+                    mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
                     if self.annotate:
-                        # Annotations
-                        mask = []
-                        for zone, zone_annotator in zip(self.zones, self.zone_annotators):
-                            mask.append(zone.trigger(detections=self.detections)) #this changes self.zones.current_count
-                            frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
-                            frame = zone_annotator.annotate(scene=frame)
+                        frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
+                        frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
 
                     # Split into different sets of detections depending on object, by bounding box
-                    self.item_detections = tuple([self.detections[mask[i] & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
+                    self.item_detections = tuple([self.detections[mask & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
 
                     # TRIGGER EVENT
                     if self.trigger_event():
@@ -246,10 +258,10 @@ class InferenceSystem:
                 
                     # Display frame
                     if self.display:
-                        cv2.imshow(f'Camera {self.cams[camera_num].src}', frame)
+                        cv2.imshow(f'Camera {self.cams[self.camera_num].src}', frame)
 
                     # Update iteration index for the loop    
-                    camera_num += 1
+                    self.camera_num += 1
 
             except Exception as e:
                 print("Frame unavailable, error was: ", e)
@@ -283,29 +295,32 @@ class InferenceSystem:
 
 class EntranceInferenceSystem(InferenceSystem):
     def __init__(self, *args, **kwargs) -> None:
-        self.zone_count = 0
-        self.cnt = 0
+
 
         # If need to overwrite a particular argument do the following. 
         # Let's say need to overwrite the 'model_directory' argument
         # kwargs['model_directory'] = 'my_new_directory_path'
 
         super().__init__(*args, **kwargs)
+        self.zone_count = [0 for i in range(len(self.cams))]
+        self.cnt = [0 for i in range(len(self.cams))]
 
 
     def trigger_event(self) -> bool:
 
-        return self.zones[0].current_count > self.zone_count and (not self.detection_trigger_flag)
+        return int(self.zones[0].current_count) > self.zone_count[0] and (not self.detection_trigger_flag) #FIX THIS FLAG LOGIC
     
     def trigger_action(self) -> None:
-        self.cnt += 1
-        self.detections_array.append(self.item_detections)
-        self.array_for_frames.append(self.captures)
-        if self.cnt >= self.num_consecutive_frames:
-            self.cnt = 0
+        self.cnt[self.camera_num] += 1
+        self.detections_array[self.camera_num].append(self.item_detections)
+        self.array_for_frames[self.camera_num].append(self.captures[self.camera_num])
+        if self.cnt[self.camera_num] >= self.num_consecutive_frames:
+
+            self.cnt[self.camera_num] = 0
             self.detection_trigger_flag = False
+
             the_detections = [[] for _ in range(len(self.items))]
-            for detected_items in self.detections_array:
+            for detected_items in self.detections_array[self.camera_num]:
                 for the_item in detected_items:
                     if hasattr(the_item, 'class_id') and len(the_item.class_id) > 0:
                         [the_detections[detected_items.index(the_item)].append(int(ids)) for ids in the_item.class_id]
@@ -319,7 +334,8 @@ class EntranceInferenceSystem(InferenceSystem):
                     print(f"No detections for object {self.items[i]}")
                 
             # Pick the least blurry image
-            least_blurry_images = [least_blurry_image_indx(self.captures[i]) for i in range(len(self.items))]
+            least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
+            # least_blurry_images = [least_blurry_image_indx(self.captures[i]) for i in range(len(self.items))]
 
             # Compliance Logic
             compliant = False
@@ -329,8 +345,9 @@ class EntranceInferenceSystem(InferenceSystem):
             elif most_common_detections[0] == 1:
                 compliant = True
 
-            bordered_frames = [draw_border(least_blurry_images[i],  compliant, self.border_thickness) for i in range(len(self.items))]
-            bordered_frame = np.hstack(tuple(bordered_frames))
+            bordered_frame = draw_border(self.array_for_frames[self.camera_num][least_blurry_indx],  compliant, self.border_thickness)
+            # bordered_frames = [draw_border(least_blurry_images[i],  compliant, self.border_thickness) for i in range(len(self.items))]
+            # bordered_frame = np.hstack(tuple(bordered_frames))
 
             data = {
                 'zone_name': '1',
@@ -338,7 +355,7 @@ class EntranceInferenceSystem(InferenceSystem):
                 'compliant': str(compliant)
             }
 
-            success, encoded_image = cv2.imencode('.jpg', bordered_frames[0])
+            success, encoded_image = cv2.imencode('.jpg', bordered_frame)
             if success:
                 image_bytes = bytearray(encoded_image)
                 sendImageToServer(image_bytes, data, IP_address=self.server_IP)
@@ -353,13 +370,14 @@ class EntranceInferenceSystem(InferenceSystem):
                 raise ValueError("Could not encode the frame as a JPEG image")
             
             if self.save:
-                self.save_frames(self.array_for_frames)
+                self.save_frames(self.array_for_frames[self.camera_num])
 
-            self.detections_array = []
-            self.array_for_frames = []
+            self.detections_array[self.camera_num] = []
+            self.array_for_frames[self.camera_num] = []
     
     def other_actions(self) -> None:
-        self.zone_count = self.zones[0].current_count
+        for i in range(len(self.zones)):
+            self.zone_count[i] = self.zones[i].current_count
     
 
 class LaserInferenceSystem(InferenceSystem):
@@ -372,6 +390,26 @@ class LaserInferenceSystem(InferenceSystem):
         return self.zones[0].current_count >= 1
     
     def trigger_action(self) -> None:
+        print("Laser Cutter inference successfully launched")
+        self.detection_trigger_flag = False
+        byte_tracker = sv.ByteTracker()
+      
+        # Run Inference
+        results = self.model(frame)
+
+        # load results into supervision
+        detections = sv.Detections.from_yolov5(results)
+        
+        # Apply NMS to remove double detections
+        detections = detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
+        
+        # Check if the distance metric has been violated
+        self.detection_trigger_flag, detection_info = self.trigger_event(detections=detections)
+        # The detection_info variable will hold a tuple that
+        # will be the indices for the objects in violation
+        
+        # Gives all detections ids and will be processed in the next step
+        detections = self.ByteTracker_implementation(detections=detections, byteTracker=byte_tracker)
         if self.save:
             self.save_frames(self.captures)
     
@@ -390,12 +428,125 @@ class FaceRecognitionSystem(InferenceSystem):
 
 class EnvisionInferenceSystem(InferenceSystem):
     def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[]) -> None:
+        self.detection_trigger_flag = False
         super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
-
-    def trigger_event(self) -> bool:
-        # Trigger event for envision
-        return self.zones[0].current_count >= 1
     
+    
+    
+    def run(self, iou_thres, agnostic_nms):
+        print("Inference successfully launched")
+        self.detection_trigger_flag = False
+        byte_tracker = sv.ByteTracker()
+        while True:
+            try:
+                # Make the slowest cam be the bottleneck here
+                ret, frame = self.cams[0].getFrame()
+                ret2, frame2 = self.cams[1].getFrame()
+                if ret == False or ret2 == False:
+                    continue
+
+                # Run Inference
+                results = self.model(frame)
+                results2 = self.model(frame2)
+
+                # load results into supervision
+                detections = sv.Detections.from_yolov5(results)
+                detections2 = sv.Detections.from_yolov5(results2)
+                
+                # Apply NMS to remove double detections
+                detections = detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
+                detections2 = detections2.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
+                
+                # Check if the distance metric has been violated
+                self.detection_trigger_flag, detection_info = self.trigger_event(detections=detections)
+                # The detection_info variable will hold a tuple that
+                # will be the indices for the objects in violation
+                
+                # Gives all detections ids and will be processed in the next step
+                detections = self.ByteTracker_implementation(detections=detections, byteTracker=byte_tracker)
+                # Printing out detections will output this:
+                '''
+                Detections(xyxy=array([[     816.08,         243,      905.23,      368.74],
+                                       [     81.858,       243.4,      168.83,      364.49],
+                                       [     414.21,      267.22,       498.5,      372.73]], 
+                                      dtype=float32), 
+                           mask=None, 
+                           confidence=array([    0.84752,     0.76186,     0.49337], dtype=float32), 
+                           class_id=array([1, 1, 0]), 
+                           tracker_id=None)
+                NEW DETECTIONS:  Detections(xyxy=array([[     77.585,      243.67,      168.21,      364.91],
+                                                        [      808.9,      242.57,      904.81,      368.67],
+                                                        [     415.05,      267.64,      497.65,       373.7]], 
+                                                        dtype=float32), 
+                                            mask=None, 
+                                            confidence=array([    0.76186,     0.84752,     0.49337], dtype=float32), 
+                                            class_id=array([1, 1, 0]), 
+                                            tracker_id=array([19, 20, 21]))
+                '''
+                tracker_id = detections.tracker_id[detection_info[1]]
+
+
+
+                #######################################################################
+                # Place logic for detecting if the time passed for an ID's violation  #
+                # is under 10 mins. If so, then no violation has occurred. However,   #
+                # if it's been over 10 mins. Make sure that the function will take
+                # in the tracker id.                                     #
+                #######################################################################
+                # is under 10 mins. If so, then no violation has occurred. However,   #
+                # if it's been over 10 mins. Make sure that the function will take
+                # in the tracker id.                                     #
+                #######################################################################
+
+
+                # Display frame
+                if self.display:
+                    cv2.imshow('ComboCam', frame)
+
+            except Exception as e:
+                print('frame unavailable', e)
+                traceback.print_exc()
+
+            if cv2.waitKey(1) == ord('q'):
+                self.stop()
+    
+    def findCenter(self, minX, minY, maxX, maxY):
+        centerX = round(minX + (maxX - minX)/2)
+        centerY = round(minY + (maxY - minY)/2)
+        return centerX, centerY
+
+    def trigger_event(self, detections) -> bool:
+                 # Trigger event for envision
+        # Variables in the for loop to be processed
+        labels = detections.labels
+        cnt = 0
+        violation_detected = False
+        threshold = 0.3
+        # Change the class numbers for the labels to the correct one
+        # Change the class numbers for the labels to the correct one
+        for label in labels:
+            if label == 0: # Assuming class 0 is "soldering"
+                minX, minY, maxX, maxY = detections.boxes[cnt]
+                centerX, centerY = self.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+                cnt2 = 0
+                for label2 in labels:
+                    if label2 == 1: # Assuming class 1 is "no_goggles"
+                        minX2, minY2, maxX2, maxY2 = detections.boxes[cnt2]
+                        centerX2, centerY2 = self.findCenter(minX=minX2, minY=minY2, maxX=maxX2, maxY=maxY2)
+                        distX = abs(centerX - centerX2)/self.frame_size[0]
+                        distY = abs(centerY - centerY2)/self.frame_size[1]
+                        if distX < threshold and distY < threshold:
+                            return True, (cnt, cnt2)
+                    cnt2 = cnt2 + 1
+            if violation_detected:
+                break
+            cnt = cnt + 1
+        return False
+        # # Trigger event for envision
+        # return self.zones[0].current_count >= 1
+    
+
     def trigger_action(self) -> None:
+
         if self.save:
             self.save_frames(self.captures)

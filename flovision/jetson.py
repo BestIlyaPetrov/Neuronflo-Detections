@@ -19,6 +19,7 @@ dotenv.load_dotenv('credentials.env')
 class Jetson:
     def __init__(self) -> None:
         GPIO.setmode(GPIO.BOARD)
+        GPIO.setwarnings(False)
 
         self.red = c.RED_LED
         self.green = c.GREEN_LED

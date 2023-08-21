@@ -69,8 +69,14 @@ def variance_of_laplacian(image):
 	return cv2.Laplacian(image, cv2.CV_64F).var()
 
 def least_blurry_image_indx(frame_list):
+
     blur_val_list = []
+    cnt=0
     for frame in frame_list:
+
+        cv2.imshow(f'Blurry Camera {cnt}', frame)
+        cnt+=1
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         fm = variance_of_laplacian(gray)
         blur_val_list.append(fm)
