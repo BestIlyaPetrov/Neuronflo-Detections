@@ -201,10 +201,8 @@ class InferenceSystem:
                 self.captures = []
                 frame_unavailable = False
                 for cam in self.cams:
-                    print(f"Trying to get frame from cam{cam.src}")
                     ret, frame = cam.getFrame()
                     if not ret:
-                        print("not ret nihuya")
                         frame_unavailable = True
                         break
 
@@ -222,16 +220,12 @@ class InferenceSystem:
 
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
-                    print("processing frame ", self.camera_num)
                     # Send through the model
                     results = self.model(frame)
-                    print("results")
                     # Convert the detections to the Supervision-compatible format
                     self.detections = sv.Detections.from_yolov5(results)
-                    print("detections1")
                     # Run NMS to remove double detections
                     self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
-                    print("detections2")
                     # If detections present, track them. Assign track_id
                     if len(self.detections) > 0:
                         self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
@@ -239,21 +233,17 @@ class InferenceSystem:
                     
                     # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
                     mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
-                    print("mask")
                     
                     # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate:
                         frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
                         frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
-                    print("annotate")
 
                     # Split into different sets of detections depending on object, by bounding box (aka tuple(goggles/no_goggles, shoes/no_shoes) )
                     self.item_detections = tuple([self.detections[mask & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
-                    print("tuple detctions")
 
                     # TRIGGER EVENT - TODO: ADD MULTIPLE TRIGGER EVENTS FUNCTIONALITY
                     if self.trigger_event():
-                        print("trigger_event")
                         self.detection_trigger_flag[self.camera_num] = True
                         
                         results_dict = results.pandas().xyxy[0].to_dict()
@@ -264,7 +254,6 @@ class InferenceSystem:
                         print()
 
                     if self.detection_trigger_flag[self.camera_num]:
-                        print("trigger action")
                         self.trigger_action()
 
                     self.other_actions()

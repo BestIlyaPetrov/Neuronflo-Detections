@@ -103,13 +103,18 @@ class vStream:
         
     def update(self):
         while True:
-            try: 
-                if self.new_frame_available == False:
-                    ret, self.frame = self.capture.read()
-                    if ret:
-                        self.new_frame_available = True
-            except:
-                print(f"ERR: Camera {self.src} could not be read")
+            _,self.frame = self.capture.read()
+            # print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
+            # self.frame2 = cv2.resize(self.frame, (self.width, self.height))
+            self.new_frame_available = True
+        # while True:
+        #     try: 
+        #         if self.new_frame_available == False:
+        #             ret, self.frame = self.capture.read()
+        #             if ret:
+        #                 self.new_frame_available = True
+        #     except:
+        #         print(f"ERR: Camera {self.src} could not be read")
 
 
     def getFrame(self):
