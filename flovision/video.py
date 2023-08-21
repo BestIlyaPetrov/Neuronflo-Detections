@@ -4,6 +4,7 @@ import numpy as np
 import json
 import glob
 
+
 def get_device_indices(quantity = 1):
     # Determine the two sources to use for cameras:
     # Find all available video devices
@@ -73,10 +74,6 @@ def least_blurry_image_indx(frame_list):
     blur_val_list = []
     cnt=0
     for frame in frame_list:
-
-        cv2.imshow(f'Blurry Camera {cnt}', frame)
-        cnt+=1
-
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         fm = variance_of_laplacian(gray)
         blur_val_list.append(fm)
@@ -101,10 +98,10 @@ class vStream:
         self.frame = None
     def update(self):
         while True:
-            _,self.frame = self.capture.read()
-            # print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
-            # self.frame2 = cv2.resize(self.frame, (self.width, self.height))
-            self.new_frame_available = True
+            if self.new_frame_available == False:
+                ret, self.frame = self.capture.read()
+                if ret:
+                    self.new_frame_available = True
 
 
     def getFrame(self):
