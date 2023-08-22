@@ -6,6 +6,8 @@ import time
 import numpy as np
 import torch, torchvision
 import json
+import datetime
+import time
 
 import supervision as sv
 import traceback
@@ -43,9 +45,6 @@ class InferenceSystem:
         return:
             None
         """
-        # Load the model
-        self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
-                    if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
 
         if server_IP == "local":
             self.server_IP = findLocalServer()
@@ -63,14 +62,15 @@ class InferenceSystem:
         func = create_bounding_boxes if bboxes else load_bounding_boxes
         for i, cam in enumerate(self.cams):
             coordinates = func(cam)
-            # coordinates[:,0] += i*video_res[0] # shift the x coordinates
             zone_polygons.append(coordinates)
 
         # TODO: improve zone management
         # 1. Need several zones per camera
         # 2. Need to neatly store the coordinates - not just coordinates0.json and coordinates1.json
 
-
+        # Load the model
+        self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
+                    if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
         
         # Create ByteTracker objects for each camera feed
         self.trackers = [sv.ByteTrack() for i in range(num_devices)]
@@ -180,15 +180,15 @@ class InferenceSystem:
 
         zone_count = 0 # count the number of zones
         self.num_consecutive_frames = 3 # num_consecutive_frames that we want to window (to reduce jitter)
-        
-        # self.detections_array = []
-        # self.array_for_frames = []
-        self.detections_array = [[] for _ in range(len(self.cams))]
 
-        self.array_for_frames = [[] for _ in range(len(self.cams))]
+        # List of lists, beacause for each camera feed, we have a list of detections we save to choose the prevalent one as jitter reduction technique (aka goggle, no_goggle, goggle -> goggle )
+        self.detections_array = [[] for _ in range(len(self.zones))]
 
-        cnt = 0
-        self.detection_trigger_flag = [False for _ in range(len(self.cams))]
+        # List of lists, beacause for each camera feed, we have a list of frames we save to choose the least blurry one
+        self.array_for_frames = [[] for _ in range(len(self.zones))]
+
+        # Need a trigger flag for each of the camera feeds. Initialized to False
+        self.detection_trigger_flag = [False for _ in range(len(self.zones))]
 
         # Split detections into different sets depending on object, by bounding box (aka [goggles, no_goggles])
         self.present_indices = [2* idx for idx in range(len(self.items))]
@@ -197,7 +197,7 @@ class InferenceSystem:
 
         while True:
             try:
-                # Main detection loop
+                ### Saving a frame from each camera feed ###
                 self.captures = []
                 frame_unavailable = False
                 for cam in self.cams:
@@ -211,13 +211,10 @@ class InferenceSystem:
                 if frame_unavailable:
                     continue
               
-                # frame = np.hstack(tuple(self.captures))
 
-                #Iterating over frames for each of the connected cameras
-                # TODO: ENSURE THIS WORKS FOR SEVERAL CAMERA STREAMS
+                ##### Iterating over frames saved from each of the connected cameras #####
                 
-                self.camera_num = 0 # the index of the video stream being processed
-
+                self.camera_num = 0 # the index of the vide stream being processed
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
                     # Send through the model
@@ -295,260 +292,123 @@ class InferenceSystem:
         pass
 
 
-class EntranceInferenceSystem(InferenceSystem):
-    def __init__(self, *args, **kwargs) -> None:
 
-
-        # If need to overwrite a particular argument do the following. 
-        # Let's say need to overwrite the 'model_directory' argument
-        # kwargs['model_directory'] = 'my_new_directory_path'
-
-        super().__init__(*args, **kwargs)
-        self.zone_count = [0 for i in range(len(self.cams))]
-        self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
-
-
-    def trigger_event(self) -> bool:
-
-        return int(self.zones[self.camera_num].current_count) > self.zone_count[self.camera_num] and (not self.detection_trigger_flag[self.camera_num]) #FIX THIS FLAG LOGIC
+class Violation():
+    # A class that holds everything needed to hold information
+    # for a violation on a certain track_id. Violation objects
+    # expected to be stored in a dictionary as a value with 
+    # key being the track_id number. 
+    def __init__(self, camera_id, class_id, timestamp, violation_code) -> None:
+        self.camera_id = camera_id
+        self.class_id = []
+        self.class_id.append(class_id)
+        #self.track_id = track_id
+        self.timestamps = []
+        self.timestamps.append(timestamp)
+        self.violation_codes = []
+        self.violation_codes.append(violation_code)
     
-    def trigger_action(self) -> None:
-        # Count how many images we already took
-        self.consecutive_frames_cnt[self.camera_num] += 1
-
-        # Append an detections from self.camera_num source to the array for detection jitter reduction
-        self.detections_array[self.camera_num].append(self.item_detections)
-
-        # Append an image from self.camera_num source to the array for least blurry choice
-        self.array_for_frames[self.camera_num].append(self.captures[self.camera_num])
-
-        # After N consecutive frames collected, check what was the most common detection for each object
-        if self.consecutive_frames_cnt[self.camera_num] >= self.num_consecutive_frames:
-
-            # Reset the consecutive frames count
-            self.consecutive_frames_cnt[self.camera_num] = 0
-
-            # Reset the trigger flag as well so we can have another trigger action
-            self.detection_trigger_flag[self.camera_num] = False
-
-            # For each detected item (aka goggles vs no_goggles being 1 item), append detected class_id from the last N frames 
-            the_detections = [[] for _ in range(len(self.items))]
-            for detected_items in self.detections_array[self.camera_num]:
-                for the_item in detected_items:
-                    if hasattr(the_item, 'class_id') and len(the_item.class_id) > 0:
-                        [the_detections[detected_items.index(the_item)].append(int(ids)) for ids in the_item.class_id]
-            # Check the most common detection class_id and choose prevalent one (aka goggle, no_goggle, goggle, goggle -> goggle)
-            most_common_detections = self.present_indices
-            for i in range(len(self.items)):
-                if len(the_detections[i]):
-                    most_common_detections[i] = collections.Counter(the_detections[i]).most_common(1)[0][0]
-                    print(f"Most common detection for object {self.items[i]} is {most_common_detections[i]}")
-                else:
-                    print(f"No detections for object {self.items[i]}")
-                
-            # Pick the least blurry image to send to the server (we assume images don't vary that much within a small enough del_t or in this case N = self.num_consecutive_frames)
-            least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
-
-            # Compliance Logic
-            compliant = False
-            if most_common_detections[0] == 0:
-                compliant =  False
-
-            elif most_common_detections[0] == 1:
-                compliant = True
-
-            bordered_frame = draw_border(self.array_for_frames[self.camera_num][least_blurry_indx],  compliant, self.border_thickness)
-
-            # Pack the data for the server to process - TODO: figure out what data we are sending to the server - what can we gather?
-            data = {
-                'zone_name': '1',
-                'crossing_type': 'coming', #or leaving
-                'compliant': str(compliant)
-            }
-
-            # send the actual image to the server
-            sendImageToServer(bordered_frame, data, IP_address=self.server_IP)
-
-            # Save the image locally for further model retraining
-            if self.save:
-                self.save_frames(self.array_for_frames[self.camera_num])
-
-            # Reset the arrays for the data and the images, since we just sent it to the server
-            self.detections_array[self.camera_num] = []
-            self.array_for_frames[self.camera_num] = []
+    def Check_Code(self, violation_code, class_id) -> bool:
+        # Will check if the there's already an existing violation
+        # This should be ran after the Update_Time() method
+        self.Update_Time()
+        return violation_code in self.violation_codes and class_id in self.class_id
     
-    def other_actions(self) -> None:
-        for i in range(len(self.zones)):
-            self.zone_count[i] = self.zones[i].current_count
-    
+    def Add_Code(self, violation_code, class_id) -> None:
+        # Will add a new violation code to the violation object
+        self.violation_codes.append(violation_code)
+        self.class_id.append(class_id)
+        self.timestamps.append(datetime.datetime.now())
 
-class LaserInferenceSystem(InferenceSystem):
-    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory="./", model_source='local', detected_items=[]) -> None:
-        
-        super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
+    def Update_Time(self) -> bool:
+        # Will update the timestamps recorded here and will delete
+        # the timestamps that are over 10 minutes old. This method
+        # should be the only method used to delete the violation
+        # codes stored in a violation object. 
+        if len(self.timestamps) == 0:
+            return False
 
-    def trigger_event(self) -> bool:
-        # Trigger event for laser
-        return self.zones[0].current_count >= 1
-    
-    def trigger_action(self) -> None:
-        print("Laser Cutter inference successfully launched")
-        self.detection_trigger_flag[self.camera_num] = False
-        byte_tracker = sv.ByteTracker()
-      
-        # Run Inference
-        results = self.model(frame)
+        # 3 list comprehensions used to update the timestamps and 
+        # violation codes. The condition list comprehension will
+        # store a list of booleans of which elements should stay
+        # or not. Using that list, the timestamps and 
+        # violation_codes list will be told to keep the elements
+        # that correlate to the True elements of the condition
+        # list. 
+        condition = [((datetime.datetime.now() - timestamp) < datetime.timedelta(minutes=10)) for timestamp in self.timestamps]
+        self.timestamps = [timestamp for timestamp, cond in zip(self.timestamps, condition) if cond]
+        self.violation_codes = [violation_code for violation_code, cond in zip(self.violation_codes, condition) if cond]
+        return True
 
-        # load results into supervision
-        detections = sv.Detections.from_yolov5(results)
-        
-        # Apply NMS to remove double detections
-        detections = detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
-        
-        # Check if the distance metric has been violated
-        self.detection_trigger_flag[self.camera_num], detection_info = self.trigger_event(detections=detections)
-        # The detection_info variable will hold a tuple that
-        # will be the indices for the objects in violation
-        
-        # Gives all detections ids and will be processed in the next step
-        detections = self.ByteTracker_implementation(detections=detections, byteTracker=byte_tracker)
-        if self.save:
-            self.save_frames(self.captures)
-    
-class FaceRecognitionSystem(InferenceSystem):
-    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory="./", model_source='local', detected_items=[]) -> None:
-        
-        super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
-
-    def trigger_event(self) -> bool:
-        # Trigger event for face recognition
-        return self.zones[0].current_count >= 1
-    
-    def trigger_action(self) -> None:
-        if self.save:
-            self.save_frames(self.captures)
-
-class EnvisionInferenceSystem(InferenceSystem):
-    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[]) -> None:
-        self.detection_trigger_flag[self.camera_num] = False
-        super().__init__(model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type, model_directory, model_source, detected_items)
-    
-    
-    
-    def run(self, iou_thres, agnostic_nms):
-        print("Inference successfully launched")
-        self.detection_trigger_flag[self.camera_num] = False
-        byte_tracker = sv.ByteTracker()
-        while True:
-            try:
-                # Make the slowest cam be the bottleneck here
-                ret, frame = self.cams[0].getFrame()
-                ret2, frame2 = self.cams[1].getFrame()
-                if ret == False or ret2 == False:
-                    continue
-
-                # Run Inference
-                results = self.model(frame)
-                results2 = self.model(frame2)
-
-                # load results into supervision
-                detections = sv.Detections.from_yolov5(results)
-                detections2 = sv.Detections.from_yolov5(results2)
-                
-                # Apply NMS to remove double detections
-                detections = detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
-                detections2 = detections2.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
-                
-                # Check if the distance metric has been violated
-                self.detection_trigger_flag[self.camera_num], detection_info = self.trigger_event(detections=detections)
-                # The detection_info variable will hold a tuple that
-                # will be the indices for the objects in violation
-                
-                # Gives all detections ids and will be processed in the next step
-                detections = self.ByteTracker_implementation(detections=detections, byteTracker=byte_tracker)
-                # Printing out detections will output this:
-                '''
-                Detections(xyxy=array([[     816.08,         243,      905.23,      368.74],
-                                       [     81.858,       243.4,      168.83,      364.49],
-                                       [     414.21,      267.22,       498.5,      372.73]], 
-                                      dtype=float32), 
-                           mask=None, 
-                           confidence=array([    0.84752,     0.76186,     0.49337], dtype=float32), 
-                           class_id=array([1, 1, 0]), 
-                           tracker_id=None)
-                NEW DETECTIONS:  Detections(xyxy=array([[     77.585,      243.67,      168.21,      364.91],
-                                                        [      808.9,      242.57,      904.81,      368.67],
-                                                        [     415.05,      267.64,      497.65,       373.7]], 
-                                                        dtype=float32), 
-                                            mask=None, 
-                                            confidence=array([    0.76186,     0.84752,     0.49337], dtype=float32), 
-                                            class_id=array([1, 1, 0]), 
-                                            tracker_id=array([19, 20, 21]))
-                '''
-                tracker_id = detections.tracker_id[detection_info[1]]
+    def __len__(self) -> int:
+        # Will return the number of valid timestamps available
+        self.Update_Time()
+        return len(self.timestamps)
 
 
+class FrameProcessing():
+    # A class for processing detections found in a frame  
+    def __init__(self, inference_system) -> None:
+        self.detections = None
+        self.system = inference_system
 
-                #######################################################################
-                # Place logic for detecting if the time passed for an ID's violation  #
-                # is under 10 mins. If so, then no violation has occurred. However,   #
-                # if it's been over 10 mins. Make sure that the function will take
-                # in the tracker id.                                     #
-                #######################################################################
-                # is under 10 mins. If so, then no violation has occurred. However,   #
-                # if it's been over 10 mins. Make sure that the function will take
-                # in the tracker id.                                     #
-                #######################################################################
+    def NewDetections(self, detections):
+        # Will be used to update the detections and
+        # returns the relevant detection data 
+        # relating to violations detected so far 
+        if len(detections) == 0:
+            return []
+        self.detections = detections
+        return self.process()
 
+    def process(self) -> list:
+        # Will run all of the violation detecting methods here
+        # and return a list of lists. Each element will hold the
+        # the index of the person violating the rule, the index
+        # of the item that causes the person to be in violation,
+        # the camera index, and then the violation code. 
+        violations = self.distance_rule(detections=self.detections)
+        return violations
 
-                # Display frame
-                if self.display:
-                    cv2.imshow('ComboCam', frame)
-
-            except Exception as e:
-                print('frame unavailable', e)
-                traceback.print_exc()
-
-            if cv2.waitKey(1) == ord('q'):
-                self.stop()
-    
-    def findCenter(self, minX, minY, maxX, maxY):
-        centerX = round(minX + (maxX - minX)/2)
-        centerY = round(minY + (maxY - minY)/2)
-        return centerX, centerY
-
-    def trigger_event(self, detections) -> bool:
-                 # Trigger event for envision
-        # Variables in the for loop to be processed
+    def distance_rule(self, detections) -> list:
+        # This method will evaluate the detections found
+        # in the frame if they're valid violations 
         labels = detections.labels
-        cnt = 0
-        violation_detected = False
-        threshold = 0.3
+        camera_index = 0
+        soldering_iron_index = 0
+        threshold = 0.25
+        frame_violations = []
         # Change the class numbers for the labels to the correct one
         # Change the class numbers for the labels to the correct one
         for label in labels:
-            if label == 0: # Assuming class 0 is "soldering"
-                minX, minY, maxX, maxY = detections.boxes[cnt]
-                centerX, centerY = self.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
-                cnt2 = 0
+            # Iterates through all label to find the active soldering iron
+            if label == 0:
+                # When active soldering iron is found
+                # Find the center point of it 
+                minX, minY, maxX, maxY = detections.boxes[soldering_iron_index]
+                centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+                
+                # Start iterating through the detections to find people with no goggles
+                person_index = 0
                 for label2 in labels:
                     if label2 == 1: # Assuming class 1 is "no_goggles"
-                        minX2, minY2, maxX2, maxY2 = detections.boxes[cnt2]
+                        # First find the center point of the person with no goggles
+                        minX2, minY2, maxX2, maxY2 = detections.boxes[person_index]
                         centerX2, centerY2 = self.findCenter(minX=minX2, minY=minY2, maxX=maxX2, maxY=maxY2)
-                        distX = abs(centerX - centerX2)/self.frame_size[0]
-                        distY = abs(centerY - centerY2)/self.frame_size[1]
+                        # Second find the distance between the soldering iron and person
+                        # with no goggles in the x and y direction 
+                        distX = abs(centerX - centerX2)/self.system.frame_size[0]
+                        distY = abs(centerY - centerY2)/self.system.frame_size[1]
+                        # Third compare the distances to the threshold 
                         if distX < threshold and distY < threshold:
-                            return True, (cnt, cnt2)
-                    cnt2 = cnt2 + 1
-            if violation_detected:
-                break
-            cnt = cnt + 1
-        return False
-        # # Trigger event for envision
-        # return self.zones[0].current_count >= 1
-    
-
-    def trigger_action(self) -> None:
-
-        if self.save:
-            self.save_frames(self.captures)
+                            # If true, then append the relevant violation information
+                            # to the violations list 
+                            violation_code = 0
+                            violation = [person_index, soldering_iron_index, camera_index, violation_code]
+                            frame_violations.append(violation)
+                    # Iterate the index for keeping track of people with no goggles
+                    person_index = person_index + 1
+            # Iterate the index for keeping track of active soldering irons
+            soldering_iron_index = soldering_iron_index + 1
+        # Return the final frame violations that were valid
+        return frame_violations

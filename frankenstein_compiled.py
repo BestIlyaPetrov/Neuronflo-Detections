@@ -1,4 +1,5 @@
-from flovision import laser_inference, entrance_inference, comms, video, inference
+# from flovision import laser_inference, entrance_inference, comms, video, inference
+from flovision.systems import Entrance
 import cv2
 import argparse
 
@@ -49,7 +50,8 @@ def main(
 
         # )
 
-        inference_obj = inference.EntranceInferenceSystem(
+        # inference_obj = inference.EntranceInferenceSystem(
+        inference_obj = Entrance.EntranceInferenceSystem(
             model_name = "custom_models/bestmaskv5.pt", 
             video_res = video_res, 
             border_thickness = border_thickness, 
