@@ -25,7 +25,22 @@ class InferenceSystem:
     """
     General class for inference system
     """
-    def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[], server_IP='local', annotate=False) -> None:
+    # def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[], server_IP='local', annotate=False) -> None:
+    def __init__(self, **kwargs) -> None:
+        model_name = kwargs.get('model_name')
+        video_res = kwargs.get('video_res')
+        border_thickness = kwargs.get('border_thickness')
+        display = kwargs.get('display')
+        save = kwargs.get('save')
+        bboxes = kwargs.get('bboxes')
+        num_devices = kwargs.get('num_devices')
+        model_type = kwargs.get('model_type', 'custom')
+        model_directory = kwargs.get('model_directory', "./")
+        model_source = kwargs.get('model_source', 'local')
+        detected_items = kwargs.get('detected_items', [])
+        server_IP = kwargs.get('server_IP', 'local')
+        annotate = kwargs.get('annotate', False)
+        
         """
         param:
             model_name: name of the model to be used for inference
@@ -344,71 +359,3 @@ class Violation():
         # Will return the number of valid timestamps available
         self.Update_Time()
         return len(self.timestamps)
-
-
-class FrameProcessing():
-    # A class for processing detections found in a frame  
-    def __init__(self, inference_system) -> None:
-        self.detections = None
-        self.system = inference_system
-
-    def NewDetections(self, detections):
-        # Will be used to update the detections and
-        # returns the relevant detection data 
-        # relating to violations detected so far 
-        if len(detections) == 0:
-            return []
-        self.detections = detections
-        return self.process()
-
-    def process(self) -> list:
-        # Will run all of the violation detecting methods here
-        # and return a list of lists. Each element will hold the
-        # the index of the person violating the rule, the index
-        # of the item that causes the person to be in violation,
-        # the camera index, and then the violation code. 
-        violations = self.distance_rule(detections=self.detections)
-        return violations
-
-    def distance_rule(self, detections) -> list:
-        # This method will evaluate the detections found
-        # in the frame if they're valid violations 
-        labels = detections.labels
-        camera_index = 0
-        soldering_iron_index = 0
-        threshold = 0.25
-        frame_violations = []
-        # Change the class numbers for the labels to the correct one
-        # Change the class numbers for the labels to the correct one
-        for label in labels:
-            # Iterates through all label to find the active soldering iron
-            if label == 0:
-                # When active soldering iron is found
-                # Find the center point of it 
-                minX, minY, maxX, maxY = detections.boxes[soldering_iron_index]
-                centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
-                
-                # Start iterating through the detections to find people with no goggles
-                person_index = 0
-                for label2 in labels:
-                    if label2 == 1: # Assuming class 1 is "no_goggles"
-                        # First find the center point of the person with no goggles
-                        minX2, minY2, maxX2, maxY2 = detections.boxes[person_index]
-                        centerX2, centerY2 = self.findCenter(minX=minX2, minY=minY2, maxX=maxX2, maxY=maxY2)
-                        # Second find the distance between the soldering iron and person
-                        # with no goggles in the x and y direction 
-                        distX = abs(centerX - centerX2)/self.system.frame_size[0]
-                        distY = abs(centerY - centerY2)/self.system.frame_size[1]
-                        # Third compare the distances to the threshold 
-                        if distX < threshold and distY < threshold:
-                            # If true, then append the relevant violation information
-                            # to the violations list 
-                            violation_code = 0
-                            violation = [person_index, soldering_iron_index, camera_index, violation_code]
-                            frame_violations.append(violation)
-                    # Iterate the index for keeping track of people with no goggles
-                    person_index = person_index + 1
-            # Iterate the index for keeping track of active soldering irons
-            soldering_iron_index = soldering_iron_index + 1
-        # Return the final frame violations that were valid
-        return frame_violations

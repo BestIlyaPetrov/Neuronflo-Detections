@@ -1,5 +1,5 @@
 # from flovision import laser_inference, entrance_inference, comms, video, inference
-from flovision.systems import Entrance
+from flovision.systems import Entrance, Envision, LaserCutter, FaceRecognition
 import cv2
 import argparse
 
@@ -51,7 +51,7 @@ def main(
         # )
 
         # inference_obj = inference.EntranceInferenceSystem(
-        inference_obj = Entrance.EntranceInferenceSystem(
+        inference_obj = Envision.EnvisionInferenceSystem(
             model_name = "custom_models/bestmaskv5.pt", 
             video_res = video_res, 
             border_thickness = border_thickness, 
@@ -62,7 +62,7 @@ def main(
             model_type="custom",
             model_directory="./",
             model_source="local",
-            detected_items=["goggles","mask"],
+            detected_items=["goggles","soldering"],
             server_IP = 'local',
             annotate = annotate
 
