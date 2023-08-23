@@ -266,6 +266,3 @@ class EnvisionInferenceSystem(InferenceSystem):
     def trigger_action(self) -> None:
         if self.save:
             self.save_frames(self.captures)
-
-
-

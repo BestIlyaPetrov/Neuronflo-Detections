@@ -317,7 +317,6 @@ class Violation():
         self.camera_id = camera_id
         self.class_id = []
         self.class_id.append(class_id)
-        #self.track_id = track_id
         self.timestamps = []
         self.timestamps.append(timestamp)
         self.violation_codes = []
@@ -325,7 +324,7 @@ class Violation():
     
     def Check_Code(self, violation_code, class_id) -> bool:
         # Will check if the there's already an existing violation
-        # This should be ran after the Update_Time() method
+        # with matching class ID that caused it. 
         self.Update_Time()
         return violation_code in self.violation_codes and class_id in self.class_id
     
@@ -353,9 +352,11 @@ class Violation():
         condition = [((datetime.datetime.now() - timestamp) < datetime.timedelta(minutes=10)) for timestamp in self.timestamps]
         self.timestamps = [timestamp for timestamp, cond in zip(self.timestamps, condition) if cond]
         self.violation_codes = [violation_code for violation_code, cond in zip(self.violation_codes, condition) if cond]
+        
+        if len(self.timestamps) == 0:
+            return False
         return True
 
     def __len__(self) -> int:
         # Will return the number of valid timestamps available
-        self.Update_Time()
-        return len(self.timestamps)
+        return self.Update_Time()
