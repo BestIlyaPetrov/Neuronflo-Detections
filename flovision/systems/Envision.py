@@ -222,6 +222,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         """
         # Skip if there are no violations
         if len(violations):
+            self.Update_Dictionary()
             # Iterate through all violations initially detected
             # violation = [person_index, soldering_iron_index, camera_index, violation_code]
             new_violations = [violation for violation in violations if violation[0] in self.violation_dictionary]
