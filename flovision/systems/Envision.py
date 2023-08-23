@@ -78,8 +78,8 @@ class FrameProcessing():
                         centerX2, centerY2 = self.findCenter(minX=minX2, minY=minY2, maxX=maxX2, maxY=maxY2)
                         # Second find the distance between the soldering iron and person
                         # with no goggles in the x and y direction 
-                        distX = abs(centerX - centerX2)/self.system.frame_size[0]
-                        distY = abs(centerY - centerY2)/self.system.frame_size[1]
+                        distX = abs(centerX - centerX2)/self.system.frame_width
+                        distY = abs(centerY - centerY2)/self.system.frame_height
                         # Third compare the distances to the threshold 
                         if distX < threshold and distY < threshold:
                             # If true, then append the relevant violation information
@@ -98,6 +98,16 @@ class FrameProcessing():
 class EnvisionInferenceSystem(InferenceSystem):
     def __init__(self, *args, **kwargs) -> None:
 
+        """
+        self.frame_width = video_res[0]
+        self.frame_height = video_res[1]
+        self.frame_size = (self.frame_width, self.frame_height)
+        self.border_thickness = border_thickness
+        self.display = display
+        self.save = save
+        self.annotate = annotate
+        """
+
         # If need to overwrite a particular argument do the following. 
         # Let's say need to overwrite the 'model_directory' argument
         # kwargs['model_directory'] = 'my_new_directory_path'
@@ -109,10 +119,10 @@ class EnvisionInferenceSystem(InferenceSystem):
     def run(self, iou_thres, agnostic_nms):
         print("Inference successfully launched")
         self.detection_trigger_flag = False
-        byte_tracker = sv.ByteTrack()
-        FrameProcessor = FrameProcessing(inference_system=self)
+        self.byte_tracker = sv.ByteTrack()
+        self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = {}
-
+        self.detections = []    
         self.camera_num = 0 # the index of the vide stream being processed
 
         while True:
@@ -129,85 +139,17 @@ class EnvisionInferenceSystem(InferenceSystem):
                 results = self.model(frame)
 
                 # load results into supervision
-                detections = sv.Detections.from_yolov5(results)
+                self.detections = sv.Detections.from_yolov5(results)
                 
                 # Apply NMS to remove double detections
-                detections = detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
+                self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
 
                 # Gives all detections ids and will be processed in the next step
-                if len(detections) > 0:
-                    detections = self.ByteTracker_implementation(detections=detections, byteTracker=byte_tracker)
-
-                ### ADDED EVERYTHING STARTING FROM HERE TO TRIGGER ACTION ###
-                
-                # violations should be a list of lists
-                violations = FrameProcessor.NewDetections(detections=detections)
-                    # violations = [[person_index, soldering_iron_index, camera_index, violation_code],
-                    #               [person_index, soldering_iron_index, camera_index, violation_code], ...]
-                    # tracker_id = detections.tracker_id[detection_info[1]]
-                
-                """
-                #1. Check if id of person is inside violations dictionary -> if-statment
-                #2. If not, add them and create a new Violation object and add to dictionary -> if-statement
-                3. If they are, then check if they've made the same violation in the past -> functionA
-                    a. If they have made the same violation in the past 10 minutes with the same class_id
-                       detected, then ignore this violation. If the class_id is different, then it's a valid
-                       violation.
-                    b. If they haven't made this violation in the past 10 minutes, then the violation is
-                       valid.
-                4. Move onto next violation
-                """
-                # Skip if there are no violations
-                if len(violations):
-                    # Iterate through all violations initially detected
-                    # violation = [person_index, soldering_iron_index, camera_index, violation_code]
-                    new_violations = [violation for violation in violations if violation[0] in self.violation_dictionary]
-                    old_violations = [violation for violation in violations if not violation[0] in self.violation_dictionary]
-                    
-                    # Makes sure there's 
-                    self.violation_dictionary = {key: value for key, value in self.violation_dictionary.items() if len(value)}
-                    
-                    # For loop for processing new violations with no track_id 
-                    for violation in new_violations:
-                        # If not then add new violation object to the dictionary
-                        camera_id = 0
-                        class_id = detections.class_id[violation[1]]
-                        timestamp = datetime.datetime.now()
-                        violation_code = 0
-                        track_id = detections.tracker_id[violation[0]]
-                        # Creates a violation object to be stored in the 
-                        self.violation_dictionary[track_id] = Violation(camera_id=camera_id, class_id=class_id, timestamp=timestamp, violation_code=violation_code)
-                        violation_to_server.append(violation)
-
-                    # For loop for processing old violations with a track_id
-                    for violation in old_violations:
-                        # Check if violation object has record of the same violation 
-                        # in the last 10 minutes 
-                        class_id = detections.class_id[violation[1]]  
-                        violation_code = 0
-                        violation_object = self.violation_dictionary[violation[0]]
-                        if violation_object.Check_Code(violation_code, class_id):
-                            # If true, violation already exists and is not valid
-                            continue
-                        else:
-                            # If false, then that means that violation is valid and
-                            # should be added to the list of violations to be sent
-                            # to the server 
-                            violation_to_server.append(violation)
-                            # Add code to modify the violation object
-                            violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
-
-                ### ADDED EVERYTHING ENDING HERE TO TRIGGER ACTION ###
-                ### TODO: ENSURE trigger_event AND trigger_action ARE CORRECT AND TEST WITH JETSON ###
-                ### THEN WE TEST AT UCSD ####
-                
-                # Check if the distance metric has been violated
-                # self.detection_trigger_flag, detection_info = self.trigger_event(detections=detections)
-                # The detection_info variable will hold a tuple that
-                # will be the indices for the objects in violation
-                
-                
-                # Printing out detections will output this: a
+                if len(self.detections) > 0:
+                    self.trigger_event(violation_to_server=violation_to_server)
+                # Printing out raw detections will output the first one and 
+                # printing out the bytetracker implementation will output 
+                # the second one:
                 '''
                 Detections(xyxy=array([[     816.08,         243,      905.23,      368.74],
                                        [     81.858,       243.4,      168.83,      364.49],
@@ -227,19 +169,8 @@ class EnvisionInferenceSystem(InferenceSystem):
                                             tracker_id=array([19, 20, 21]))
                 '''
 
-
-
-                #######################################################################
-                # Place logic for detecting if the time passed for an ID's violation  #
-                # is under 10 mins. If so, then no violation has occurred. However,   #
-                # if it's been over 10 mins. Make sure that the function will take    #
-                # in the tracker id.                                                  #
-                #######################################################################
-                # is under 10 mins. If so, then no violation has occurred. However,   #
-                # if it's been over 10 mins. Make sure that the function will take    #
-                # in the tracker id.                                                  #
-                #######################################################################
-
+                if self.detection_trigger_flag:
+                    self.trigger_action()
 
                 # Display frame
                 if self.display:
@@ -252,49 +183,28 @@ class EnvisionInferenceSystem(InferenceSystem):
             if cv2.waitKey(1) == ord('q'):
                 self.stop()
     
-    def Update_Dictionary(self):
+    def Update_Dictionary(self) -> None:
+        # Will update the violation_dictionary to contain the
+        # most up to date violations. If there's a violation
+        # that's over 10 minutes old, that violation will 
+        # be deleted from the dictionary.  
         self.violation_dictionary = {key: value for key, value in self.violation_dictionary.items() if len(value)}
 
-        pass
-
     def findCenter(self, minX, minY, maxX, maxY):
+        # Will find the center of a detection when given the 
+        # min and max for the X and Y coordinates. 
         centerX = round(minX + (maxX - minX)/2)
         centerY = round(minY + (maxY - minY)/2)
         return centerX, centerY
 
-    def trigger_event(self) -> bool:
-                 # Trigger event for envision
-        # Variables in the for loop to be processed
-        labels = self.detections.class_id
-        cnt = 0
-        violation_detected = False
-        threshold = 0.3
-        # Change the class numbers for the labels to the correct one
-        for label in labels:
-            if label == 2: # Assuming class 2 is "soldering"
-                minX, minY, maxX, maxY = detections.xyxy[cnt]
-                centerX, centerY = self.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
-                cnt2 = 0
-                for label2 in labels:
-                    if label2 == 1: # Assuming class 1 is "no_goggles"
-                        minX2, minY2, maxX2, maxY2 = detections.xyxy[cnt2]
-                        centerX2, centerY2 = self.findCenter(minX=minX2, minY=minY2, maxX=maxX2, maxY=maxY2)
-                        distX = abs(centerX - centerX2)/self.frame_size[0]
-                        distY = abs(centerY - centerY2)/self.frame_size[1]
-                        if distX < threshold and distY < threshold:
-                            return True, (cnt, cnt2)
-                    cnt2 = cnt2 + 1
-            if violation_detected:
-                break
-            cnt = cnt + 1
-        return False
-        # # Trigger event for envision
-        # return self.zones[0].current_count >= 1
-    
+    def trigger_event(self, violation_to_server) -> None:
+        # Will change the self.detection_trigger_flag to True
+        # if a valid violation is detected. 
+        self.detection_trigger_flag = False
+        self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.byte_tracker)
 
-    def trigger_action(self) -> None:
         # violations should be a list of lists
-        violations = FrameProcessor.NewDetections(detections=self.detections)
+        violations = self.FrameProcessor.NewDetections(detections=self.detections)
             # violations = [[person_index, soldering_iron_index, camera_index, violation_code],
             #               [person_index, soldering_iron_index, camera_index, violation_code], ...]
             # tracker_id = detections.tracker_id[detection_info[1]]
@@ -304,10 +214,10 @@ class EnvisionInferenceSystem(InferenceSystem):
         #2. If not, add them and create a new Violation object and add to dictionary -> if-statement
         3. If they are, then check if they've made the same violation in the past -> functionA
             a. If they have made the same violation in the past 10 minutes with the same class_id
-                detected, then ignore this violation. If the class_id is different, then it's a valid
-                violation.
+               detected, then ignore this violation. If the class_id is different, then it's a valid
+               violation.
             b. If they haven't made this violation in the past 10 minutes, then the violation is
-                valid.
+               valid.
         4. Move onto next violation
         """
         # Skip if there are no violations
@@ -324,19 +234,20 @@ class EnvisionInferenceSystem(InferenceSystem):
             for violation in new_violations:
                 # If not then add new violation object to the dictionary
                 camera_id = 0
-                class_id = detections.class_id[violation[1]]
+                class_id = self.detections.class_id[violation[1]]
                 timestamp = datetime.datetime.now()
                 violation_code = 0
-                track_id = detections.tracker_id[violation[0]]
+                track_id = self.detections.tracker_id[violation[0]]
                 # Creates a violation object to be stored in the 
                 self.violation_dictionary[track_id] = Violation(camera_id=camera_id, class_id=class_id, timestamp=timestamp, violation_code=violation_code)
                 violation_to_server.append(violation)
+                self.detection_trigger_flag = True
 
             # For loop for processing old violations with a track_id
             for violation in old_violations:
                 # Check if violation object has record of the same violation 
                 # in the last 10 minutes 
-                class_id = detections.class_id[violation[1]]  
+                class_id = self.detections.class_id[violation[1]]  
                 violation_code = 0
                 violation_object = self.violation_dictionary[violation[0]]
                 if violation_object.Check_Code(violation_code, class_id):
@@ -349,7 +260,9 @@ class EnvisionInferenceSystem(InferenceSystem):
                     violation_to_server.append(violation)
                     # Add code to modify the violation object
                     violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
+                    self.detection_trigger_flag = True
 
+    def trigger_action(self) -> None:
         if self.save:
             self.save_frames(self.captures)
 
