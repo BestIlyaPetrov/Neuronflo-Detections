@@ -207,7 +207,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 # will be the indices for the objects in violation
                 
                 
-                # Printing out detections will output this:
+                # Printing out detections will output this: a
                 '''
                 Detections(xyxy=array([[     816.08,         243,      905.23,      368.74],
                                        [     81.858,       243.4,      168.83,      364.49],
