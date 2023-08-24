@@ -129,7 +129,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
         self.detections = []    
-        self.camera_num = 0 # the index of the vide stream being processed
+        self.camera_num = 0 # the index of the video stream being processed
 
         while True:
             try:
@@ -280,7 +280,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         
             # Now figure out which track_ids repeat from frame to frame 
             # The threshold is that each track_id must happen more than floor(N/2) times
-            violating_ids_list = repeat_ids(self.violations_track_ids_array)
+            violating_ids_list = self.repeat_ids(self.violations_track_ids_array)
 
             corrected_violations = []
             for violation in self.violations_array[self.camera_num][0]:
@@ -288,7 +288,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                     corrected_violations.append(violation)
 
 
-       """
+        """
         #1. Check if id of person is inside violations dictionary -> if-statment
         #2. If not, add them and create a new Violation object and add to dictionary -> if-statement
         3. If they are, then check if they've made the same violation in the past -> functionA
@@ -347,17 +347,35 @@ class EnvisionInferenceSystem(InferenceSystem):
             # Pick the least blurry image to send to the server (we assume images don't vary that much within a small enough del_t or in this case N = self.num_consecutive_frames)
             least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
 
+            # PLACE LOGIC FOR ANNOTATIONS HERE!
+            # PLACE LOGIC FOR ANNOTATIONS HERE! 
+            # PLACE LOGIC FOR ANNOTATIONS HERE!
+            # PLACE LOGIC FOR ANNOTATIONS HERE!
+            # PLACE LOGIC FOR ANNOTATIONS HERE!
 
-            #  Compliance Logi
+            #  Compliance Logic
             img_to_send = self.array_for_frames[self.camera_num][least_blurry_indx]
 
             # Pack the data for the server to process - TODO: figure out what data we are sending to the server - what can we gather?
             # FIX THIS DATA THAT IS BEING SENT TO THE SERVER
-        
+            
+            # What we want to be sent to the server:
+            # GOOD 1) Image
+            # GOOD 2) Number of people breaking the rules
+            # GOOD 3) Time of violation
+            # GOOD 4) Name of rule broken
+            
+            # violation = [person_index, soldering_iron_index, camera_index, violation_code, track_id] inside self.violation_to_server
+            # self.violation_to_server = [[violation, violation, ...], [violation, violation, ...], ...]
+            # self.violation_dictionary = [{person_track_id:violation_object, ...}, {person_track_id:violation_object, ...}, ...]
+            timestamps = [self.violation_dictionary[self.camera_num][violation[-1]].Get_Timestamp(violation[-2]).strftime('%Y-%m-%dT%H:%M:%SZ') for violation in self.violation_to_server]
+            rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
+            
             data = {
-                'zone_name': '1',
-                'crossing_type': 'coming', #or leaving
-                'compliant': str(compliant)
+                'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
+                'timestamps': ','.join(timestamps),
+                'rules_broken': str(rules_broken),
+                'compliant': "False"
             }
 
             # send the actual image to the server

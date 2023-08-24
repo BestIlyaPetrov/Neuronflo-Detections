@@ -362,4 +362,9 @@ class Violation():
 
     def __len__(self) -> int:
         # Will return the number of valid timestamps available
-        return self.Update_Time()
+        self.Update_Time()
+        return len(self.timestamps)
+    
+    def Get_Timestamp(self, violation_code) -> datetime:
+        index = self.violation_codes.index(violation_code)
+        return self.timestamps[index]
