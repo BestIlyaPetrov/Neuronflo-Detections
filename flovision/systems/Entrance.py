@@ -31,7 +31,7 @@ class EntranceInferenceSystem(InferenceSystem):
 
         super().__init__(*args, **kwargs)
         self.zone_count = [0 for i in range(len(self.cams))]
-        self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
+        # self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
 
 
     def trigger_event(self) -> bool:

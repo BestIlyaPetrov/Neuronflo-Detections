@@ -98,6 +98,8 @@ class InferenceSystem:
         self.display = display
         self.save = save
         self.annotate = annotate
+        self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
+
 
         # Set the zone params
         colors = sv.ColorPalette.default()
@@ -242,15 +244,16 @@ class InferenceSystem:
                     if len(self.detections) > 0:
                         self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
 
-                    
-                    # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
-                    mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
+                    if self.use_zones:
+                        # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
+                        mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
                     
                     # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate:
                         frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
                         frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
 
+                    # FIX THIS LOGIC TO ALSO WORK IF MASK IS NOT PRESENT
                     # Split into different sets of detections depending on object, by bounding box (aka tuple(goggles/no_goggles, shoes/no_shoes) )
                     self.item_detections = tuple([self.detections[mask & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
 
