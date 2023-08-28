@@ -244,9 +244,9 @@ class InferenceSystem:
                     if len(self.detections) > 0:
                         self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
 
-                    if self.use_zones:
-                        # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
-                        mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
+                    #if self.use_zones:
+                    # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
+                    mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
                     
                     # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate:

@@ -27,9 +27,10 @@ from math import floor
 
 """
 Model detects the following classes
-0: goggles
-1: no_goggles
-2: soldering
+0-goggles
+1-no_goggles
+2-soldering
+3-hand
 """
 class FrameProcessing():
     # A class for processing detections found in a frame  
@@ -44,6 +45,10 @@ class FrameProcessing():
         if len(detections) == 0:
             return []
         self.detections = detections
+        self.labels = self.detections.class_id
+        self.no_goggles = [index for index, label in enumerate(self.labels) if label == 1]
+        self.solder_labels = [index for index, label in enumerate(self.labels) if label == 2]
+        self.hand_labels = [index for index, label in enumerate(self.labels) if label == 3]
         return self.process()
 
     def process(self) -> list:
@@ -51,21 +56,72 @@ class FrameProcessing():
         # and return a list of lists. Each element will hold the
         # the index of the person violating the rule, the index
         # of the item that causes the person to be in violation,
-        # the camera index, and then the violation code. 
-        violations = self.distance_rule(detections=self.detections)
+        # the camera index, and then the violation code.
+        if len(self.hand_labels) == 0 or (not self.solder_in_hand()):
+            # If there's no hands being detected then it's
+            # reasonable to assume that there's no one there
+            # to create a violation. If there's no soldering irons
+            # inside a hand in frame, then similarly there's need
+            # to look for a violation. 
+            return []
+
+        violations = self.distance_rule()
         return violations
 
-    def distance_rule(self, detections) -> list:
+    def solder_in_hand(self) -> bool:
+        # The purpose of this function is to edit the 
+        # soldering label list to only have soldering
+        # irons that are being hand held. 
+        threshold = 0.05
+        condition = []
+        for solder_index in self.solder_labels:
+            # Iterate through each soldering iron and look
+            # to see if there's a hand close enough to it.
+            # If there's a hand close enough, then that's 
+            # a valid soldering iron to run violation
+            # detection. 
+            minX, minY, maxX, maxY = self.detections.xyxy[solder_index]
+            centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+            for hand_index in self.hand_labels:
+                # Find the distance between the centers of 
+                # the hand and soldering iron detections.
+                # If the distance is small enough, append
+                # True to condition and False if not. 
+                minX, minY, maxX, maxY = self.detections.xyxy[hand_index]
+                centerX2, centerY2 = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+                distX = float(abs(centerX - centerX2))/float(self.system.frame_width)
+                distY = float(abs(centerY - centerY2))/float(self.system.frame_height)
+                
+                if distX < threshold and distY < threshold:
+                    condition.append(True)
+                else:
+                    condition.append(False)
+        self.solder_labels = [label_index for label_index, cond in zip(self.solder_labels, condition) if cond]
+        return bool(len(self.solder_labels))
+
+    def distance_rule(self) -> list:
         # This method will evaluate the detections found
         # in the frame if they're valid violations 
-        labels = detections.class_id
-        camera_index = 0
-        soldering_iron_index = 0
+        #labels = detections.class_id
         threshold = 0.25
         frame_violations = []
-        # Change the class numbers for the labels to the correct one
-        # Change the class numbers for the labels to the correct one
-        for label in labels:
+        violation_code = 0
+        camera_num = self.system.camera_num
+        for solder_index in self.solder_labels:
+            minX, minY, maxX, maxY = self.detections.xyxy[solder_index]
+            centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+            for no_goggles_index in self.no_goggles:
+                minX, minY, maxX, maxY = self.detections.xyxy[no_goggles_index]
+                centerX2, centerY2 = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+                distX = float(abs(centerX - centerX2))/float(self.system.frame_width)
+                distY = float(abs(centerY - centerY2))/float(self.system.frame_height)
+                if distX < threshold and distY < threshold:
+                    track_id = self.detections.track_id[no_goggles_index]
+                    violation = [no_goggles_index, solder_index, camera_num, violation_code, track_id]
+                    frame_violations.append(violation)
+        return frame_violations
+
+        """for label in self.labels:
             # Iterates through all label to find the active soldering iron
             if label == 2:
                 # When active soldering iron is found
@@ -75,7 +131,7 @@ class FrameProcessing():
                 
                 # Start iterating through the detections to find people with no goggles
                 person_index = 0
-                for label2 in labels:
+                for label2 in self.labels:
                     if label2 == 1: # Assuming class 1 is "no_goggles"
                         # First find the center point of the person with no goggles
                         minX2, minY2, maxX2, maxY2 = detections.xyxy[person_index]
@@ -96,7 +152,7 @@ class FrameProcessing():
             # Iterate the index for keeping track of active soldering irons
             soldering_iron_index = soldering_iron_index + 1
         # Return the final frame violations that were valid
-        return frame_violations
+        return frame_violations"""
 
 
 class EnvisionInferenceSystem(InferenceSystem):
@@ -121,12 +177,14 @@ class EnvisionInferenceSystem(InferenceSystem):
         # List of lists, beacause for each camera feed, we have a list of violations we save to choose the prevalent one as jitter reduction technique (aka goggle, no_goggle, goggle -> goggle )
         self.violations_array = [[] for _ in range(len(self.cams))]
         self.violations_track_ids_array = [[] for _ in range(len(self.cams))]
+        self.FrameProcessor = FrameProcessing(inference_system=self)
     
     def run(self, iou_thres, agnostic_nms):
+        # Imagine this won't be running
         print("Inference successfully launched")
         self.detection_trigger_flag = False
         self.byte_tracker = sv.ByteTrack()
-        self.FrameProcessor = FrameProcessing(inference_system=self)
+        #self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
         self.detections = []    
         self.camera_num = 0 # the index of the video stream being processed
@@ -205,9 +263,6 @@ class EnvisionInferenceSystem(InferenceSystem):
         centerX = round(minX + (maxX - minX)/2)
         centerY = round(minY + (maxY - minY)/2)
         return centerX, centerY
-
-
-
         
     def repeat_ids(list_of_track_ids):
         # Flatten the list
@@ -218,10 +273,6 @@ class EnvisionInferenceSystem(InferenceSystem):
         
         # Get numbers that appear at least floor(len(a)/2) times
         return [num for num, freq in count.items() if freq >= floor(len(list_of_track_ids)/2)]
-
-
-
-
 
     def trigger_event(self) -> bool:
         # Will change the self.detection_trigger_flag to True
@@ -237,7 +288,7 @@ class EnvisionInferenceSystem(InferenceSystem):
             # tracker_id = detections.tracker_id[detection_info[1]]
 
         #if at least one violation is detected, let's record N frames and decide if it was a fluke or not    
-        return len(self.violations)
+        return bool(len(self.violations))
 
     def trigger_action(self) -> None:
         # Count how many images we already took
@@ -259,6 +310,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         
 
         # After N consecutive frames collected, check what was the most common detection for each object
+        corrected_violations = []
         if  self.consecutive_frames_cnt[self.camera_num] >= self.num_consecutive_frames:
 
             # Reset the consecutive frames count
@@ -281,35 +333,30 @@ class EnvisionInferenceSystem(InferenceSystem):
             # Now figure out which track_ids repeat from frame to frame 
             # The threshold is that each track_id must happen more than floor(N/2) times
             violating_ids_list = self.repeat_ids(self.violations_track_ids_array)
-
-            corrected_violations = []
-            for violation in self.violations_array[self.camera_num][0]:
+            
+            # Finds the least blurry image's index
+            least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
+            
+            # This records the union of track_ids of the least blurry image and which 
+            # ids are followed in multiple frames 
+            for violation in self.violations_array[self.camera_num][least_blurry_indx]:
                 if violation[-1] in violating_ids_list:
                     corrected_violations.append(violation)
 
-
-        """
-        #1. Check if id of person is inside violations dictionary -> if-statment
-        #2. If not, add them and create a new Violation object and add to dictionary -> if-statement
-        3. If they are, then check if they've made the same violation in the past -> functionA
-            a. If they have made the same violation in the past 10 minutes with the same class_id
-               detected, then ignore this violation. If the class_id is different, then it's a valid
-               violation.
-            b. If they haven't made this violation in the past 10 minutes, then the violation is
-               valid.
-        4. Move onto next violation
-        """
         # Skip if there are no violations
         if len(corrected_violations):
+            # Pick the least blurry image to send to the server
+            # (we assume images don't vary that much within a 
+            # small enough del_t or in this case N = self.num_consecutive_frames)
 
+            # Finds the least blurry image's index
+            least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
             self.Update_Dictionary()
+
             # Iterate through all violations initially detected
             # violation = [person_index, soldering_iron_index, camera_index, violation_code]
-            new_violations = [violation for violation in violations if violation[0] in self.violation_dictionary[self.camera_num]]
-            old_violations = [violation for violation in violations if not violation[0] in self.violation_dictionary[self.camera_num]]
-            
-            # Makes sure there's 
-            # self.violation_dictionary[self.camera_num] = {key: value for key, value in self.violation_dictionary[self.camera_num].items() if len(value)}
+            new_violations = [violation for violation in corrected_violations if violation[0] in self.violation_dictionary[self.camera_num]]
+            old_violations = [violation for violation in corrected_violations if not violation[0] in self.violation_dictionary[self.camera_num]]
             
             # For loop for processing new violations with no track_id 
             for violation in new_violations:
@@ -342,11 +389,10 @@ class EnvisionInferenceSystem(InferenceSystem):
                     self.violation_to_server.append(violation)
                     # Add code to modify the violation object
                     violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
-         
 
-            # Pick the least blurry image to send to the server (we assume images don't vary that much within a small enough del_t or in this case N = self.num_consecutive_frames)
-            least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
+            # Annotate the frame's detections
 
+            # self.annotate()
             # PLACE LOGIC FOR ANNOTATIONS HERE!
             # PLACE LOGIC FOR ANNOTATIONS HERE! 
             # PLACE LOGIC FOR ANNOTATIONS HERE!
@@ -368,12 +414,13 @@ class EnvisionInferenceSystem(InferenceSystem):
             # violation = [person_index, soldering_iron_index, camera_index, violation_code, track_id] inside self.violation_to_server
             # self.violation_to_server = [[violation, violation, ...], [violation, violation, ...], ...]
             # self.violation_dictionary = [{person_track_id:violation_object, ...}, {person_track_id:violation_object, ...}, ...]
-            timestamps = [self.violation_dictionary[self.camera_num][violation[-1]].Get_Timestamp(violation[-2]).strftime('%Y-%m-%dT%H:%M:%SZ') for violation in self.violation_to_server]
+            #timestamps = [self.violation_dictionary[self.camera_num][violation[-1]].Get_Timestamp(violation[-2]).strftime('%Y-%m-%dT%H:%M:%SZ') for violation in self.violation_to_server[self.camera_num]]
+            timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
             
             data = {
                 'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
-                'timestamps': ','.join(timestamps),
+                'timestamps': timestamp_to_send, # We only need a timestamp
                 'rules_broken': str(rules_broken),
                 'compliant': "False"
             }
