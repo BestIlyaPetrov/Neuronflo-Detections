@@ -290,6 +290,43 @@ class EnvisionInferenceSystem(InferenceSystem):
         #if at least one violation is detected, let's record N frames and decide if it was a fluke or not    
         return bool(len(self.violations))
 
+    def annotate_violations(self, frame) -> list:
+        # Use this function to annotate the frame's
+        # valid violations.   
+        violations = self.violation_to_server[self.camera_num]
+        # violation = [person_index, soldering_iron_index, camera_index, violation_code, track_id]
+        # violations = [violation, violation, ...]
+        violation_pairing = 0
+        person_text = 'No Goggles'
+        soldering_text = 'Active Soldering Iron'
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1
+        font_color = (0, 0, 255)  # Red color in BGR format
+        line_thickness = 3
+        for violation in violations:
+            # Each iteration will text annotate a full violation
+            # onto the frame. Each annotation will have a [int] 
+            # at the end of the text annotation from the frame.
+            # This is to indicate which detection is with which
+            # that caused a violation 
+            person_idx = violation[0]
+            person_X = self.detections.xyxy(person_idx)[0]
+            person_Y = self.detections.xyxy(person_idx)[1]
+            person_position = (person_X, person_Y)
+
+            solder_idx = violation[1]
+            solder_X = self.detections.xyxy(solder_idx)[0]
+            solder_Y = self.detections.xyxy(solder_idx)[1]
+            solder_position = (solder_X, solder_Y)
+
+            # Add text annotations to the frame
+            solder_annotation = f"{soldering_text} [{violation_pairing}]"
+            person_annotation = f"{person_text} [{violation_pairing}]"
+            violation_pairing = violation_pairing + 1
+            frame = cv2.putText(frame, solder_annotation, solder_position, font, font_scale, font_color, line_thickness)
+            frame = cv2.putText(frame, person_annotation, person_position, font, font_scale, font_color, line_thickness)
+        return frame
+
     def trigger_action(self) -> None:
         # Count how many images we already took
         self.consecutive_frames_cnt[self.camera_num] += 1
@@ -391,7 +428,8 @@ class EnvisionInferenceSystem(InferenceSystem):
                     violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
 
             # Annotate the frame's detections
-
+            frame = self.array_for_frames[self.camera_num][least_blurry_indx]
+            frame = self.annotate_violations(frame=frame)
             # self.annotate()
             # PLACE LOGIC FOR ANNOTATIONS HERE!
             # PLACE LOGIC FOR ANNOTATIONS HERE! 
@@ -400,7 +438,7 @@ class EnvisionInferenceSystem(InferenceSystem):
             # PLACE LOGIC FOR ANNOTATIONS HERE!
 
             #  Compliance Logic
-            img_to_send = self.array_for_frames[self.camera_num][least_blurry_indx]
+            img_to_send = frame
 
             # Pack the data for the server to process - TODO: figure out what data we are sending to the server - what can we gather?
             # FIX THIS DATA THAT IS BEING SENT TO THE SERVER
@@ -417,7 +455,9 @@ class EnvisionInferenceSystem(InferenceSystem):
             #timestamps = [self.violation_dictionary[self.camera_num][violation[-1]].Get_Timestamp(violation[-2]).strftime('%Y-%m-%dT%H:%M:%SZ') for violation in self.violation_to_server[self.camera_num]]
             timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
+            # rules_broken = [f"Too close to active soldering iron. {index}" for index, violation in enumerate(self.violation_to_server[self.camera_num]) if violation[-2] == 0]
             
+
             data = {
                 'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
                 'timestamps': timestamp_to_send, # We only need a timestamp
