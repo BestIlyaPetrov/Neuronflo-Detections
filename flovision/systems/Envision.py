@@ -121,39 +121,6 @@ class FrameProcessing():
                     frame_violations.append(violation)
         return frame_violations
 
-        """for label in self.labels:
-            # Iterates through all label to find the active soldering iron
-            if label == 2:
-                # When active soldering iron is found
-                # Find the center point of it 
-                minX, minY, maxX, maxY = detections.xyxy[soldering_iron_index]
-                centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
-                
-                # Start iterating through the detections to find people with no goggles
-                person_index = 0
-                for label2 in self.labels:
-                    if label2 == 1: # Assuming class 1 is "no_goggles"
-                        # First find the center point of the person with no goggles
-                        minX2, minY2, maxX2, maxY2 = detections.xyxy[person_index]
-                        centerX2, centerY2 = self.findCenter(minX=minX2, minY=minY2, maxX=maxX2, maxY=maxY2)
-                        # Second find the distance between the soldering iron and person
-                        # with no goggles in the x and y direction 
-                        distX = abs(centerX - centerX2)/self.system.frame_width
-                        distY = abs(centerY - centerY2)/self.system.frame_height
-                        # Third compare the distances to the threshold 
-                        if distX < threshold and distY < threshold:
-                            # If true, then append the relevant violation information
-                            # to the violations list 
-                            violation_code = 0
-                            violation = [person_index, soldering_iron_index, camera_index, violation_code, detections.track_id[person_index]]
-                            frame_violations.append(violation)
-                    # Iterate the index for keeping track of people with no goggles
-                    person_index = person_index + 1
-            # Iterate the index for keeping track of active soldering irons
-            soldering_iron_index = soldering_iron_index + 1
-        # Return the final frame violations that were valid
-        return frame_violations"""
-
 
 class EnvisionInferenceSystem(InferenceSystem):
     def __init__(self, *args, **kwargs) -> None:
@@ -430,33 +397,12 @@ class EnvisionInferenceSystem(InferenceSystem):
             # Annotate the frame's detections
             frame = self.array_for_frames[self.camera_num][least_blurry_indx]
             frame = self.annotate_violations(frame=frame)
-            # self.annotate()
-            # PLACE LOGIC FOR ANNOTATIONS HERE!
-            # PLACE LOGIC FOR ANNOTATIONS HERE! 
-            # PLACE LOGIC FOR ANNOTATIONS HERE!
-            # PLACE LOGIC FOR ANNOTATIONS HERE!
-            # PLACE LOGIC FOR ANNOTATIONS HERE!
 
             #  Compliance Logic
             img_to_send = frame
 
-            # Pack the data for the server to process - TODO: figure out what data we are sending to the server - what can we gather?
-            # FIX THIS DATA THAT IS BEING SENT TO THE SERVER
-            
-            # What we want to be sent to the server:
-            # GOOD 1) Image
-            # GOOD 2) Number of people breaking the rules
-            # GOOD 3) Time of violation
-            # GOOD 4) Name of rule broken
-            
-            # violation = [person_index, soldering_iron_index, camera_index, violation_code, track_id] inside self.violation_to_server
-            # self.violation_to_server = [[violation, violation, ...], [violation, violation, ...], ...]
-            # self.violation_dictionary = [{person_track_id:violation_object, ...}, {person_track_id:violation_object, ...}, ...]
-            #timestamps = [self.violation_dictionary[self.camera_num][violation[-1]].Get_Timestamp(violation[-2]).strftime('%Y-%m-%dT%H:%M:%SZ') for violation in self.violation_to_server[self.camera_num]]
             timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
-            # rules_broken = [f"Too close to active soldering iron. {index}" for index, violation in enumerate(self.violation_to_server[self.camera_num]) if violation[-2] == 0]
-            
 
             data = {
                 'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
@@ -467,8 +413,6 @@ class EnvisionInferenceSystem(InferenceSystem):
 
             # send the actual image to the server
             sendImageToServer(img_to_send, data, IP_address=self.server_IP)
-
-
 
             # Save the image locally for further model retraining
             if self.save:
