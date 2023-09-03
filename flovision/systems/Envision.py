@@ -255,6 +255,7 @@ class EnvisionInferenceSystem(InferenceSystem):
             # tracker_id = detections.tracker_id[detection_info[1]]
 
         #if at least one violation is detected, let's record N frames and decide if it was a fluke or not    
+        print(len(self.violations))
         return bool(len(self.violations))
 
     def annotate_violations(self, frame) -> list:
