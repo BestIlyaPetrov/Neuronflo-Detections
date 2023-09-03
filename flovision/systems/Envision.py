@@ -146,7 +146,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         self.violations_track_ids_array = [[] for _ in range(len(self.cams))]
         self.FrameProcessor = FrameProcessing(inference_system=self)
     
-    def run(self, iou_thres, agnostic_nms):
+    """def run(self, iou_thres, agnostic_nms):
         # Imagine this won't be running
         print("Inference successfully launched")
         self.detection_trigger_flag = False
@@ -215,7 +215,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 traceback.print_exc()
 
             if cv2.waitKey(1) == ord('q'):
-                self.stop()
+                self.stop()"""
     
     def Update_Dictionary(self) -> None:
         # Will update the violation_dictionary to contain the
