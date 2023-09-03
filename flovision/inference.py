@@ -283,9 +283,11 @@ class InferenceSystem:
             except Exception as e:
                 print("Frame unavailable, error was: ", e)
                 traceback.print_exc()
-
-            if cv2.waitKey(1) == ord('q'):
-                self.stop()
+            
+            # If frame is being displayed
+            if self.display:
+                if cv2.waitKey(1) == ord('q'):
+                    self.stop()
 
     def trigger_event(self) -> bool:
         """
