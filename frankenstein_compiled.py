@@ -62,7 +62,7 @@ def main(
             model_type="custom",
             model_directory="./",
             model_source="local",
-            detected_items=["goggles","soldering"],
+            detected_items=["goggles","no_goggles","soldering","hand"],
             server_IP = 'local',
             annotate = annotate
 
