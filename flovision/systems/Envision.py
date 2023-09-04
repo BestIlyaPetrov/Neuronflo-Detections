@@ -145,43 +145,9 @@ class EnvisionInferenceSystem(InferenceSystem):
         self.violations_array = [[] for _ in range(len(self.cams))]
         self.violations_track_ids_array = [[] for _ in range(len(self.cams))]
         self.FrameProcessor = FrameProcessing(inference_system=self)
-    
-    """def run(self, iou_thres, agnostic_nms):
-        # Imagine this won't be running
-        print("Inference successfully launched")
-        self.detection_trigger_flag = False
-        self.byte_tracker = sv.ByteTrack()
-        #self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
-        self.detections = []    
-        self.camera_num = 0 # the index of the video stream being processed
-
-        while True:
-            try:
-                self.violation_to_server = []
-                # Make the slowest cam be the bottleneck here
-                ret, frame = self.cams[0].getFrame()
-                #ret2, frame2 = self.cams[1].getFrame()
-                #if ret == False or ret2 == False:
-                if ret == False:
-                    continue
-
-                # Run Inference
-                results = self.model(frame)
-
-                # load results into supervision
-                self.detections = sv.Detections.from_yolov5(results)
-                
-                # Apply NMS to remove double detections
-                self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
-
-                # Gives all detections ids and will be processed in the next step
-                if len(self.detections) > 0:
-                    self.trigger_event()
-                # Printing out raw detections will output the first one and 
-                # printing out the bytetracker implementation will output 
-                # the second one:
-                '''
+        self.violation_to_server = [{} for _ in range(len(self.cams))]
+        '''
                 Detections(xyxy=array([[     816.08,         243,      905.23,      368.74],
                                        [     81.858,       243.4,      168.83,      364.49],
                                        [     414.21,      267.22,       498.5,      372.73]], 
@@ -201,22 +167,8 @@ class EnvisionInferenceSystem(InferenceSystem):
 
             # violations = [[person_index, soldering_iron_index, camera_index, violation_code, detections.track_id[person_index]],
             #               [person_index, soldering_iron_index, camera_index, violation_code, detections.track_id[person_index]], ...]
-                '''
+        '''
 
-                if self.detection_trigger_flag:
-                    self.trigger_action()
-
-                # Display frame
-                if self.display:
-                    cv2.imshow('ComboCam', frame)
-
-            except Exception as e:
-                print('frame unavailable', e)
-                traceback.print_exc()
-
-            if cv2.waitKey(1) == ord('q'):
-                self.stop()"""
-    
     def Update_Dictionary(self) -> None:
         # Will update the violation_dictionary to contain the
         # most up to date violations. If there's a violation

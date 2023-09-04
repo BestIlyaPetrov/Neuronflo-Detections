@@ -54,11 +54,11 @@ class FrameProcessing():
     def process(self) -> list:
         if len(self.goggles):
             # Assumes there's at least one goggle detection
-            thelist = [[0, goggle_idx] for goggle_idx in self.goggles]
+            thelist = [[0, goggle_idx, self.detections.tracker_id[goggle_idx]] for goggle_idx in self.goggles]
             if len(self.no_goggles):
                 # Assumes there's at least one no_goggle detection
                 for no_goggle_idx in self.no_goggles:
-                    thelist.append([1, no_goggle_idx])
+                    thelist.append([1, no_goggle_idx, self.detections.tracker_id[no_goggle_idx]])
         elif len(self.no_goggles):
             # Assumes there's at least one no_goggle detection and zero goggle detections
             thelist = [[1, no_goggle_idx] for no_goggle_idx in self.no_goggles]
@@ -84,45 +84,33 @@ class TennecoImageCapture(InferenceSystem):
 
         super().__init__(*args, **kwargs)
         self.FrameProcessor = FrameProcessing(inference_system=self)
+        self.seen_track_ids = []
         # List of lists, beacause for each camera feed, we have a list of violations we save to choose the prevalent one as jitter reduction technique (aka goggle, no_goggle, goggle -> goggle )
 
     def trigger_event(self) -> bool:
         self.violations = self.FrameProcessor.NewDetections(detections=self.detections)
+        
+        # self.violations = [[class_id, detection_idx, tracker_id], [class_id, detection_idx, tracker_id], ...] 
+        # violation = [class_id, detection_idx, tracker_id]
+        # Add method for updating the self.seen_track_ids list
+        self.update_seen_ids()
+        cond = []
+        timestamp = datetime.datetime.now()
+        # Will iterate through all found detections and make sure no 
+        # tracker_id for the detections is repeated. This will make 
+        # sure that we get a more diverse dataset.  
+        for violation in self.violations:
+            # if tracker_id inside self.seen_track_ids
+            if violation[2] in self.seen_track_ids:
+                # Delete violation from self.violations
+                cond.append(False)
+            # else
+            else:
+                # Keep the violation and add the track_id to self.seen_track_ids with a timestamp
+                self.seen_track_ids.append(violation[2], timestamp)
+                cond.append(True)
+        self.violations = [violation for violation, condition in zip(self.violations, cond) if condition]
         return bool(len(self.violations))
-
-    """def trigger_action(self) -> None:
-        burst_count = 0
-        shoe_collection = []
-        # This while loop stops after collecting 3 frames of the shoes
-        while burst_count < 3:
-            # This assumes that the shoe cam index is 1
-            ret, frame = self.cams[1].getFrame()
-            if not ret:
-                continue
-            shoe_collection.append(frame)
-            burst_count = burst_count + 1
-        
-        # Finds the least blurry image's index
-        least_blurry_indx = least_blurry_image_indx(shoe_collection)
-        
-        # Save the frame with the shoes
-        bottom_frame = shoe_collection[least_blurry_indx]
-        file_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        save_directory = 'bottom_cam_images/'
-        frame_filename = f'{file_timestamp}.jpg'
-        save_path = save_directory + frame_filename
-        cv2.imwrite(save_path, bottom_frame)
-
-        # Save the frame with the person
-        least_blurry_indx_top = least_blurry_image_indx(self.array_for_frames[0])
-        top_frame = self.array_for_frames[self.camera_num][least_blurry_indx_top]
-        save_directory = 'top_cam_images/'
-        save_path = save_directory + frame_filename
-        cv2.imwrite(save_path, top_frame)
-
-        # Reset the arrays for the data and the images, since we just sent it to the server
-        self.detections_array[self.camera_num] = []
-        self.array_for_frames[self.camera_num] = []"""
 
     def trigger_action(self) -> None:
         # Count how many images we already took
@@ -177,3 +165,8 @@ class TennecoImageCapture(InferenceSystem):
         save_path = save_directory + frame_filename
         cv2.imwrite(save_path, top_frame)
         return None
+    
+    def update_seen_ids(self):
+        # Updates the seen_ids and deletes the aged tracker_ids 
+        timestamp = datetime.datetime.now()
+        self.seen_track_ids = [elem for elem in self.seen_track_ids if ((timestamp - elem[1]) < datetime.timedelta(minutes=2))]
