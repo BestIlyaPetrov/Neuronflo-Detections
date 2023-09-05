@@ -20,9 +20,11 @@ from ..utils import get_highest_index, findLocalServer
 from ..jetson import Jetson
 from ..face_id import face_recog
 from ..inference import InferenceSystem, Violation
+from ..notifications import teleBot
 
 from collections import Counter
 from math import floor
+import os
 
 
 """
@@ -147,6 +149,8 @@ class EnvisionInferenceSystem(InferenceSystem):
         self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
         self.violation_to_server = [{} for _ in range(len(self.cams))]
+        API_token = '6323749554:AAEAA_qF1dDE-UWlTr9nxlqlj_pmZbNOqSY'
+        self.telegram_bot = teleBot(API_TOKEN=API_token, name='UCSD Envision Inference')
         '''
                 Detections(xyxy=array([[     816.08,         243,      905.23,      368.74],
                                        [     81.858,       243.4,      168.83,      364.49],
@@ -351,6 +355,9 @@ class EnvisionInferenceSystem(InferenceSystem):
             frame = self.array_for_frames[self.camera_num][least_blurry_indx]
             frame = self.annotate_violations(frame=frame)
 
+            # Telegram Bot sends in the picture and description of how many violations happened
+            self.Telegram_Notification_Implementation(frame=frame)
+
             #  Compliance Logic
             img_to_send = frame
 
@@ -374,3 +381,28 @@ class EnvisionInferenceSystem(InferenceSystem):
         # Reset the arrays for the data and the images, since we just sent it to the server
         self.detections_array[self.camera_num] = []
         self.array_for_frames[self.camera_num] = []
+
+    def create_file_path(self, frame):
+        # Ensure the home directory path is correct for your system
+        home_directory = os.path.expanduser("~")
+        file_path = os.path.join(home_directory, "captured_frame.jpg")
+
+        # Convert the frame to a JPG image and save it
+        cv2.imwrite(file_path, frame)
+
+        return file_path
+    
+    def Telegram_Notification_Implementation(self, frame) -> None:
+        # Telegram Bot Integration
+        # First we create the file path for the frame
+        file_path = self.create_file_path(frame=frame)
+        # Second we send the image to the group chat. Status is used for debugging purposes 
+        status = self.telegram_bot.teleImage(file_path=file_path) 
+        if len(self.violation_to_server) > 1:
+            message = f"We have found {self.violation_to_server} violations!"
+        else:
+            message = f"We have found {self.violation_to_server} violation!"
+        # Third we send the message describing how many violations were found in the frame sent
+        self.telegram_bot.teleMessage(message=message) 
+        # Lastly we delete the saved frame from that file pathway
+        os.remove(file_path)
