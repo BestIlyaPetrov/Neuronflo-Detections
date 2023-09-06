@@ -252,7 +252,8 @@ class InferenceSystem:
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
                     # Send through the model
-                    results = self.model(frame)
+                    detection_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    results = self.model(detection_frame)
                     # Convert the detections to the Supervision-compatible format
                     self.detections = sv.Detections.from_yolov5(results)
                     # Run NMS to remove double detections

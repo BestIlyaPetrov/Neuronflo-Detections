@@ -125,8 +125,8 @@ class vStream:
             # print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
             ## Resizing to set dimensions
             # frame2 = cv2.resize(self.frame, (self.width, self.height))
-            frame_rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
-            self.frame_processed = adjust_brightness(frame_rgb)
+            # frame_rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+            self.frame_processed = adjust_brightness(self.frame)
             self.new_frame_available = True
 
 
