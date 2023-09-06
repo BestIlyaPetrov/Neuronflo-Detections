@@ -40,7 +40,22 @@ class InferenceSystem:
         detected_items = kwargs.get('detected_items', [])
         server_IP = kwargs.get('server_IP', 'local')
         annotate = kwargs.get('annotate', False)
-        
+
+        print("PARAMETERS INSIDE INFERENCE.PY")
+        print(f"model_name: {model_name}")
+        print(f"video_res: {video_res}")
+        print(f"border_thickness: {border_thickness}")
+        print(f"display: {display}")
+        print(f"save: {save}")
+        print(f"bboxes: {bboxes}")
+        print(f"num_devices: {num_devices}")
+        print(f"model_type: {model_type}")
+        print(f"model_directory: {model_directory}")
+        print(f"model_source: {model_source}")
+        print(f"detected_items: {detected_items}")
+        print(f"server_IP: {server_IP}")
+        print(f"annotate: {annotate}")
+
         """
         param:
             model_name: name of the model to be used for inference
@@ -87,6 +102,8 @@ class InferenceSystem:
         self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
                     if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
         
+        self.model.eval() #set the model into eval mode
+
         # Create ByteTracker objects for each camera feed
         self.trackers = [sv.ByteTrack() for i in range(num_devices)]
 
@@ -115,9 +132,9 @@ class InferenceSystem:
             sv.PolygonZoneAnnotator(
                 zone=zone,
                 color=colors.by_idx(index + 2),
-                thickness=4,
-                text_thickness=2,
-                text_scale=2
+                thickness=1,
+                text_thickness=1,
+                text_scale=1
             )
             for index, zone
             in enumerate(self.zones)
@@ -244,7 +261,6 @@ class InferenceSystem:
                     if len(self.detections) > 0:
                         self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
 
-                    #if self.use_zones:
                     # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
                     mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
                     

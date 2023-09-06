@@ -149,8 +149,8 @@ class EnvisionInferenceSystem(InferenceSystem):
         self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
         self.violation_to_server = [{} for _ in range(len(self.cams))]
-        API_token = '6323749554:AAEAA_qF1dDE-UWlTr9nxlqlj_pmZbNOqSY'
-        self.telegram_bot = teleBot(API_TOKEN=API_token, name='UCSD Envision Inference')
+        # API_token = '6323749554:AAEAA_qF1dDE-UWlTr9nxlqlj_pmZbNOqSY'
+        # self.telegram_bot = teleBot(API_TOKEN=API_token, name='UCSD Envision Inference')
         '''
                 Detections(xyxy=array([[     816.08,         243,      905.23,      368.74],
                                        [     81.858,       243.4,      168.83,      364.49],
@@ -356,7 +356,7 @@ class EnvisionInferenceSystem(InferenceSystem):
             frame = self.annotate_violations(frame=frame)
 
             # Telegram Bot sends in the picture and description of how many violations happened
-            self.Telegram_Notification_Implementation(frame=frame)
+            # self.Telegram_Notification_Implementation(frame=frame)
 
             #  Compliance Logic
             img_to_send = frame
@@ -370,7 +370,8 @@ class EnvisionInferenceSystem(InferenceSystem):
                 'rules_broken': str(rules_broken),
                 'compliant': "False"
             }
-
+            
+            print("violation detected - sending images")
             # send the actual image to the server
             sendImageToServer(img_to_send, data, IP_address=self.server_IP)
 

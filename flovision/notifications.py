@@ -66,12 +66,23 @@ class teleBot:
         """
 
         UPDATE_URL = 'https://api.telegram.org/bot' + str(self.API_TOKEN) + '/getUpdates'
-        response = requests.get(UPDATE_URL)
-        resp = response.json()
-        if resp['ok'] == False:
-            return None
-        chatID = resp['result'][0]['message']['chat']['id']
-        return chatID
+        response = requests.get(UPDATE_URL, verify=False)
+        
+        if response.status_code == 200: # HTTP 200 means the request was successful.
+            try:
+                resp = response.json()
+                if resp['ok'] == False:
+                    return None
+                chatID = resp['result'][0]['message']['chat']['id']
+                return chatID
+            except:
+                print("Invalid JSON received:", response.text)
+        else:
+            print("Request failed with status code:", response.status_code)
+            print("Response:", response.text)
+
+        
+       
     
     def change_API(self, API):
         self.API_TOKEN = API

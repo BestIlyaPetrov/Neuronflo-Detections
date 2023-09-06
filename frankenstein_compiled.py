@@ -4,12 +4,12 @@ import cv2
 import argparse
 
 # VIDEO RESOLUTION
-video_res = [640, 480]
+video_res = [640, 360]
 
 # NMS paparms
 # conf_thres = 0.5
 iou_thres = 0.7
-agnostic_nms= True
+agnostic_nms= False
 # classes = None ## all classes are detected
 
 #Image Annotation Params
@@ -51,8 +51,9 @@ def main(
         # )
 
         # inference_obj = inference.EntranceInferenceSystem(
+        print("Model name is:",weights)
         inference_obj = Envision.EnvisionInferenceSystem(
-            model_name = "custom_models/bestmaskv5.pt", 
+            model_name = weights, 
             video_res = video_res, 
             border_thickness = border_thickness, 
             display = display_video, 
@@ -63,7 +64,7 @@ def main(
             model_directory="./",
             model_source="local",
             detected_items=["goggles","no_goggles","soldering","hand"],
-            server_IP = 'local',
+            server_IP = server_IP,
             annotate = annotate
 
             )

@@ -5,6 +5,24 @@ import json
 import glob
 
 
+
+
+
+def adjust_brightness(img):
+
+    # Convert to YUV color space
+    yuv = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
+
+    # Apply CLAHE to the Y channel (luminance)
+    clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(4, 4))
+    yuv[:,:,0] = clahe.apply(yuv[:,:,0])
+
+    # Convert back to BGR color space
+    processed_frame = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR)
+
+    return processed_frame   
+
+
 def get_device_indices(quantity = 1):
     # Determine the two sources to use for cameras:
     # Find all available video devices
@@ -105,29 +123,20 @@ class vStream:
         while True:
             _,self.frame = self.capture.read()
             # print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
-            # self.frame2 = cv2.resize(self.frame, (self.width, self.height))
+            ## Resizing to set dimensions
+            # frame2 = cv2.resize(self.frame, (self.width, self.height))
+            frame_rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+            self.frame_processed = adjust_brightness(frame_rgb)
             self.new_frame_available = True
-        # while True:
-        #     try: 
-        #         if self.new_frame_available == False:
-        #             ret, self.frame = self.capture.read()
-        #             if ret:
-        #                 self.new_frame_available = True
-        #     except:
-        #         print(f"ERR: Camera {self.src} could not be read")
+
 
 
     def getFrame(self):
-        if self.frame is None:
-            return (False, self.frame)
+        if self.frame_processed is None:
+            return (False, self.frame_processed)
         if self.new_frame_available:
             self.new_frame_available = False
-            return (True, self.frame)
+            return (True, self.frame_processed)
         else:
-            return (False, self.frame)
+            return (False, self.frame_processed)
 
-    # def detect(self):
-    #     self.results = self.model(self.getFrame())
-    #     self.result_dict = results.pandas().xyxy[0].to_dict()
-    #     self.result_json = json.dumps(self.result_dict)
-    #     return self.result_json
