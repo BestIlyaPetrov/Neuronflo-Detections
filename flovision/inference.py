@@ -78,6 +78,8 @@ class InferenceSystem:
 
         if server_IP == "local":
             self.server_IP = findLocalServer()
+        else:
+            self.server_IP = server_IP
         cap_index = get_device_indices(quantity = num_devices)
 
         # Initialize the cameras
@@ -105,7 +107,7 @@ class InferenceSystem:
         self.model.eval() #set the model into eval mode
 
         # Create ByteTracker objects for each camera feed
-        self.trackers = [sv.ByteTrack() for i in range(num_devices)]
+        self.trackers = [sv.ByteTrack(match_thresh=0.4) for i in range(num_devices)]
 
         # Set frame params
         self.frame_width = video_res[0]
@@ -190,9 +192,8 @@ class InferenceSystem:
         try:
             for i, item in enumerate(frame_arr):
                 item_count = get_highest_index(self.item_dirs[i]) + 1
-                for img in item:
-                    cv2.imwrite(str(self.item_dirs[i] / f'{self.items[i]}_img_{item_count:04d}.jpg'), img)
-                    item_count += 1
+                cv2.imwrite(str(self.item_dirs[i] / f'{self.items[i]}_img_{item_count:04d}.jpg'), item)
+                  
 
 
         except Exception as e:
@@ -228,6 +229,9 @@ class InferenceSystem:
         self.present_indices = [2* idx for idx in range(len(self.items))]
         self.absent_indices = [2* idx + 1 for idx in range(len(self.items))]
         item_sets = [[present, absent] for present, absent in zip(self.present_indices, self.absent_indices)]
+        
+        
+        class_names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
 
         while True:
             try:
@@ -254,6 +258,28 @@ class InferenceSystem:
                     # Send through the model
                     detection_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     results = self.model(detection_frame)
+
+                    # Convert the results to a numpy array in the format [x_min, y_min, x_max, y_max, confidence, class]
+                    predictions = results.xyxy[0].cpu().numpy()
+
+
+                    # Define the confidence threshold
+                    conf_thresh = 0.3
+
+                    # Filter out predictions with a confidence score below the threshold
+                    filtered_predictions = predictions[predictions[:, 4] > conf_thresh]
+
+                    # for pred in filtered_predictions:
+                    #     class_index = int(pred[5])  # get the class index from the prediction
+                    #     class_name = class_names[class_index]
+                    #     print(f"Class ID: {class_index}, Class Name: {class_name}, Confidence: {pred[4]}")
+                    # print()
+                    # print()
+                    # Put the filtered results back into the results object
+                    results.pred[0] = torch.tensor(filtered_predictions)
+                    
+
+
                     # Convert the detections to the Supervision-compatible format
                     self.detections = sv.Detections.from_yolov5(results)
                     # Run NMS to remove double detections
@@ -268,7 +294,7 @@ class InferenceSystem:
                     # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate:
                         frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
-                        frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
+                        # frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
 
                     # FIX THIS LOGIC TO ALSO WORK IF MASK IS NOT PRESENT
                     # Split into different sets of detections depending on object, by bounding box (aka tuple(goggles/no_goggles, shoes/no_shoes) )

@@ -1,4 +1,3 @@
-
 from threading import Thread
 import cv2
 import time
@@ -48,9 +47,9 @@ class FrameProcessing():
             return []
         self.detections = detections
         self.labels = self.detections.class_id
-        self.no_goggles = [index for index, label in enumerate(self.labels) if label == 1]
-        self.solder_labels = [index for index, label in enumerate(self.labels) if label == 2]
-        self.hand_labels = [index for index, label in enumerate(self.labels) if label == 3]
+        self.no_goggles = [index for index, label in enumerate(self.labels) if label == 2]
+        self.solder_labels = [index for index, label in enumerate(self.labels) if label == 3]
+        self.hand_labels = [index for index, label in enumerate(self.labels) if label == 1]
         return self.process()
 
     def process(self) -> list:
@@ -74,7 +73,7 @@ class FrameProcessing():
         # The purpose of this function is to edit the 
         # soldering label list to only have soldering
         # irons that are being hand held. 
-        threshold = 0.05
+        threshold = 0.5
         condition = []
         for solder_index in self.solder_labels:
             # Iterate through each soldering iron and look
@@ -118,7 +117,8 @@ class FrameProcessing():
                 distX = float(abs(centerX - centerX2))/float(self.system.frame_width)
                 distY = float(abs(centerY - centerY2))/float(self.system.frame_height)
                 if distX < threshold and distY < threshold:
-                    track_id = self.detections.track_id[no_goggles_index]
+
+                    track_id = self.detections.tracker_id[no_goggles_index]
                     violation = [no_goggles_index, solder_index, camera_num, violation_code, track_id]
                     frame_violations.append(violation)
         return frame_violations
@@ -187,10 +187,11 @@ class EnvisionInferenceSystem(InferenceSystem):
         centerY = round(minY + (maxY - minY)/2)
         return centerX, centerY
         
-    def repeat_ids(list_of_track_ids):
+    def repeat_ids(self,list_of_track_ids):
         # Flatten the list
         flat_list = [item for sublist in list_of_track_ids for item in sublist]
-        
+        flat_list = [tuple(x) for x in flat_list]
+
         # Count occurrences
         count = Counter(flat_list)
         
@@ -316,8 +317,8 @@ class EnvisionInferenceSystem(InferenceSystem):
 
             # Iterate through all violations initially detected
             # violation = [person_index, soldering_iron_index, camera_index, violation_code]
-            new_violations = [violation for violation in corrected_violations if violation[0] in self.violation_dictionary[self.camera_num]]
-            old_violations = [violation for violation in corrected_violations if not violation[0] in self.violation_dictionary[self.camera_num]]
+            old_violations = [violation for violation in corrected_violations if violation[0] in self.violation_dictionary[self.camera_num]]
+            new_violations = [violation for violation in corrected_violations if not violation[0] in self.violation_dictionary[self.camera_num]]
             
             # For loop for processing new violations with no track_id 
             for violation in new_violations:
@@ -326,7 +327,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 class_id = self.detections.class_id[violation[1]]
                 timestamp = datetime.datetime.now()
                 violation_code = 0
-                track_id = self.detections.tracker_id[violation[0]]
+                track_id = violation[4] # self.detections.tracker_id[violation[0]]
                 # Creates a violation object to be stored in the 
                 self.violation_dictionary[self.camera_num][track_id] = Violation(camera_id=camera_id, class_id=class_id, timestamp=timestamp, violation_code=violation_code)
                 # After dict is updated, prep to send to server
@@ -339,6 +340,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 # in the last 10 minutes 
                 class_id = self.detections.class_id[violation[1]]  
                 violation_code = 0
+                print(self.violation_dictionary)
                 violation_object = self.violation_dictionary[self.camera_num][violation[0]]
                 if violation_object.Check_Code(violation_code, class_id):
                     # If true, violation already exists and is not valid
