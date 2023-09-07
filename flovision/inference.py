@@ -21,6 +21,8 @@ from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
 from .face_id import face_recog
 
+import os
+
 class InferenceSystem:
     """
     General class for inference system
@@ -184,17 +186,17 @@ class InferenceSystem:
         cv2.destroyAllWindows()
         exit(1)
 
-    def save_frames(self,frame_arr):
+    def save_frames(self,frame, cam_idx):
         """
         Save the frames to the disk
         """
-
         try:
-            for i, item in enumerate(frame_arr):
-                item_count = get_highest_index(self.item_dirs[i]) + 1
-                cv2.imwrite(str(self.item_dirs[i] / f'{self.items[i]}_img_{item_count:04d}.jpg'), item)
-                  
-
+            if not os.path.exists('../saved_frames'):
+                os.makedirs('../saved_frames')
+            if not os.path.exists(f'../saved_frames/cam{cam_idx}'):
+                os.makedirs(f'../saved_frames/cam{cam_idx}')
+            item_count = get_highest_index(f'../saved_frames/cam{cam_idx}') + 1
+            cv2.imwrite(str(f'../saved_frames/cam{cam_idx}/img_{item_count:04d}.jpg'), frame)
 
         except Exception as e:
             print("Error saving frames")

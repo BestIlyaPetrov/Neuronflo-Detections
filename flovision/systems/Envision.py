@@ -324,7 +324,7 @@ class EnvisionInferenceSystem(InferenceSystem):
             for violation in new_violations:
                 # If not then add new violation object to the dictionary
                 camera_id = self.camera_num
-                class_id = self.detections.class_id[violation[1]]
+                class_id = 3
                 timestamp = datetime.datetime.now()
                 violation_code = 0
                 track_id = violation[4] # self.detections.tracker_id[violation[0]]
@@ -338,7 +338,7 @@ class EnvisionInferenceSystem(InferenceSystem):
             for violation in old_violations:
                 # Check if violation object has record of the same violation 
                 # in the last 10 minutes 
-                class_id = self.detections.class_id[violation[1]]  
+                class_id = 3  
                 violation_code = 0
                 print(self.violation_dictionary)
                 violation_object = self.violation_dictionary[self.camera_num][violation[0]]
@@ -379,7 +379,7 @@ class EnvisionInferenceSystem(InferenceSystem):
 
             # Save the image locally for further model retraining
             if self.save:
-                self.save_frames(self.array_for_frames[self.camera_num])
+                self.save_frames(img_to_send,self.camera_num)
 
         # Reset the arrays for the data and the images, since we just sent it to the server
         self.detections_array[self.camera_num] = []
