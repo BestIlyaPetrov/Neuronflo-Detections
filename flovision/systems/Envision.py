@@ -32,6 +32,31 @@ Model detects the following classes
 1-no_goggles
 2-soldering
 3-hand
+
+COCO dataset
+0 - person
+27 - tie
+39 - bottle
+42 - fork 
+43 - knife
+44 - spoon 
+45 - bowl
+56 - chair
+57 - couch
+59 - bed
+60 - dining table
+62 - tv
+63 - laptop
+64 - mouse
+65 - remote
+66 - keyboard
+67 - cell phone
+69 - oven
+70 - toaster
+71 - sink
+72 - refridgerator
+73 - book
+79 - toothbrush
 """
 class FrameProcessing():
     # A class for processing detections found in a frame  
@@ -43,13 +68,18 @@ class FrameProcessing():
         # Will be used to update the detections and
         # returns the relevant detection data 
         # relating to violations detected so far 
+        person_idx = 0
+        knife_idx = 43
+        phone_idx = 67
+        # This will now activate when a person is 
+        # holding a knife and phone in the same hand 
         if len(detections) == 0:
             return []
         self.detections = detections
         self.labels = self.detections.class_id
-        self.no_goggles = [index for index, label in enumerate(self.labels) if label == 2]
-        self.solder_labels = [index for index, label in enumerate(self.labels) if label == 3]
-        self.hand_labels = [index for index, label in enumerate(self.labels) if label == 1]
+        self.no_goggles = [index for index, label in enumerate(self.labels) if label == person_idx]
+        self.solder_labels = [index for index, label in enumerate(self.labels) if label == knife_idx]
+        self.hand_labels = [index for index, label in enumerate(self.labels) if label == phone_idx]
         return self.process()
 
     def process(self) -> list:
