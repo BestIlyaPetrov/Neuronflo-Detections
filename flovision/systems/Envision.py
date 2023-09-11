@@ -69,9 +69,9 @@ class FrameProcessing():
         # Will be used to update the detections and
         # returns the relevant detection data 
         # relating to violations detected so far 
-        no_goggles_class = 1
-        solder_class = 2
-        hand_class = 3
+        no_goggles_class = 65
+        solder_class = 66
+        hand_class = 76
         # This will now activate when a person is 
         # holding a knife and phone in the same hand 
         if len(detections) == 0:
@@ -106,7 +106,7 @@ class FrameProcessing():
         # The purpose of this function is to edit the 
         # soldering label list to only have soldering
         # irons that are being hand held. 
-        threshold = 0.3
+        threshold = 0.5
         condition = []
         for solder_index in self.solder_labels:
             # Iterate through each soldering iron and look
@@ -139,7 +139,7 @@ class FrameProcessing():
         # This method will evaluate the detections found
         # in the frame if they're valid violations 
 
-        threshold = 0.4
+        threshold = 0.5
         frame_violations = []
         violation_code = 0
         camera_num = self.system.camera_num
@@ -271,14 +271,16 @@ class EnvisionInferenceSystem(InferenceSystem):
             # This is to indicate which detection is with which
             # that caused a violation 
             person_idx = violation[0]
-            person_X = self.detections.xyxy(person_idx)[0]
-            person_Y = self.detections.xyxy(person_idx)[1]
+            person_X = int(self.detections.xyxy[person_idx][0])
+            person_Y = int(self.detections.xyxy[person_idx][1])
             person_position = (person_X, person_Y)
 
             solder_idx = violation[1]
-            solder_X = self.detections.xyxy(solder_idx)[0]
-            solder_Y = self.detections.xyxy(solder_idx)[1]
+            solder_X = int(self.detections.xyxy[solder_idx][0])
+            solder_Y = int(self.detections.xyxy[solder_idx][1])
             solder_position = (solder_X, solder_Y)
+            print(f"person_position = {person_position}")
+            print(f"solder_position = {solder_position}")
 
             # Add text annotations to the frame
             solder_annotation = f"{soldering_text} [{violation_pairing}]"
@@ -382,6 +384,9 @@ class EnvisionInferenceSystem(InferenceSystem):
                 violation_object = self.violation_dictionary[self.camera_num][violation[-1]]
                 if violation_object.Check_Code(violation_code, class_id):
                     # If true, violation already exists and is not valid
+                    """
+                    
+                    """
                     continue
                 else:
                     # If false, then that means that violation is valid and
@@ -392,11 +397,11 @@ class EnvisionInferenceSystem(InferenceSystem):
                     violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
             #print(f"{self.violation_to_server[self.camera_num]}")
             #print(f"Number of violations being sent to the server: {len(self.violation_to_server[self.camera_num])}")
-            
+            print(f"num of vio to server: {len(self.violation_to_server[self.camera_num])}")
             if len(self.violation_to_server[self.camera_num]):
                 # Annotate the frame's detections
                 frame = self.array_for_frames[self.camera_num][least_blurry_indx]
-                #frame = self.annotate_violations(frame=frame)
+                frame = self.annotate_violations(frame=frame)
 
                 # Telegram Bot sends in the picture and description of how many violations happened
                 # self.Telegram_Notification_Implementation(frame=frame)
