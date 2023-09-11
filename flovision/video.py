@@ -19,7 +19,7 @@ def adjust_brightness(img):
 
     # Convert back to BGR color space
     processed_frame = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR)
-
+    
     return processed_frame   
 
 

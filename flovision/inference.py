@@ -399,7 +399,7 @@ class Violation():
         # violation_codes list will be told to keep the elements
         # that correlate to the True elements of the condition
         # list. 
-        condition = [((datetime.datetime.now() - timestamp) < datetime.timedelta(minutes=10)) for timestamp in self.timestamps]
+        condition = [((datetime.datetime.now() - timestamp) < datetime.timedelta(minutes=1)) for timestamp in self.timestamps]
         self.timestamps = [timestamp for timestamp, cond in zip(self.timestamps, condition) if cond]
         self.violation_codes = [violation_code for violation_code, cond in zip(self.violation_codes, condition) if cond]
         

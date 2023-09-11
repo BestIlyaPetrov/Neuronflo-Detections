@@ -56,6 +56,7 @@ COCO dataset
 71 - sink
 72 - refridgerator
 73 - book
+76 - scissors
 79 - toothbrush
 """
 class FrameProcessing():
@@ -68,18 +69,19 @@ class FrameProcessing():
         # Will be used to update the detections and
         # returns the relevant detection data 
         # relating to violations detected so far 
-        person_idx = 0
-        knife_idx = 43
-        phone_idx = 67
+        no_goggles_class = 1
+        solder_class = 2
+        hand_class = 3
         # This will now activate when a person is 
         # holding a knife and phone in the same hand 
         if len(detections) == 0:
             return []
         self.detections = detections
         self.labels = self.detections.class_id
-        self.no_goggles = [index for index, label in enumerate(self.labels) if label == person_idx]
-        self.solder_labels = [index for index, label in enumerate(self.labels) if label == knife_idx]
-        self.hand_labels = [index for index, label in enumerate(self.labels) if label == phone_idx]
+        self.no_goggles = [index for index, label in enumerate(self.labels) if label == no_goggles_class]
+        self.solder_labels = [index for index, label in enumerate(self.labels) if label == solder_class]
+        self.hand_labels = [index for index, label in enumerate(self.labels) if label == hand_class]
+        # [person_index, soldering_iron_index, camera_index, violation_code, track_id]
         return self.process()
 
     def process(self) -> list:
@@ -97,13 +99,14 @@ class FrameProcessing():
             return []
 
         violations = self.distance_rule()
+        #print(violations)
         return violations
 
     def solder_in_hand(self) -> bool:
         # The purpose of this function is to edit the 
         # soldering label list to only have soldering
         # irons that are being hand held. 
-        threshold = 0.5
+        threshold = 0.3
         condition = []
         for solder_index in self.solder_labels:
             # Iterate through each soldering iron and look
@@ -122,19 +125,21 @@ class FrameProcessing():
                 centerX2, centerY2 = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
                 distX = float(abs(centerX - centerX2))/float(self.system.frame_width)
                 distY = float(abs(centerY - centerY2))/float(self.system.frame_height)
-                
+                #print(f"distX: {distX} \ndistY: {distY}")
                 if distX < threshold and distY < threshold:
                     condition.append(True)
                 else:
                     condition.append(False)
         self.solder_labels = [label_index for label_index, cond in zip(self.solder_labels, condition) if cond]
+        #print(self.solder_labels)
+        #print(bool(len(self.solder_labels)))
         return bool(len(self.solder_labels))
 
     def distance_rule(self) -> list:
         # This method will evaluate the detections found
         # in the frame if they're valid violations 
-        #labels = detections.class_id
-        threshold = 0.25
+
+        threshold = 0.4
         frame_violations = []
         violation_code = 0
         camera_num = self.system.camera_num
@@ -146,6 +151,7 @@ class FrameProcessing():
                 centerX2, centerY2 = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
                 distX = float(abs(centerX - centerX2))/float(self.system.frame_width)
                 distY = float(abs(centerY - centerY2))/float(self.system.frame_height)
+                #print(f"distX: {distX} \ndistY: {distY}")
                 if distX < threshold and distY < threshold:
 
                     track_id = self.detections.tracker_id[no_goggles_index]
@@ -178,7 +184,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         self.violations_track_ids_array = [[] for _ in range(len(self.cams))]
         self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
-        self.violation_to_server = [{} for _ in range(len(self.cams))]
+        self.violation_to_server = [[] for _ in range(len(self.cams))]
         # API_token = '6323749554:AAEAA_qF1dDE-UWlTr9nxlqlj_pmZbNOqSY'
         # self.telegram_bot = teleBot(API_TOKEN=API_token, name='UCSD Envision Inference')
         '''
@@ -237,8 +243,8 @@ class EnvisionInferenceSystem(InferenceSystem):
 
         # violations should be a list of lists
         self.violations = self.FrameProcessor.NewDetections(detections=self.detections)
-            # violations = [[person_index, soldering_iron_index, camera_index, violation_code],
-            #               [person_index, soldering_iron_index, camera_index, violation_code], ...]
+            # violations = [[person_index, soldering_iron_index, camera_index, violation_code, track_id],
+            #               [person_index, soldering_iron_index, camera_index, violation_code, track_id], ...]
             # tracker_id = detections.tracker_id[detection_info[1]]
 
         #if at least one violation is detected, let's record N frames and decide if it was a fluke or not    
@@ -304,7 +310,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         # After N consecutive frames collected, check what was the most common detection for each object
         corrected_violations = []
         if  self.consecutive_frames_cnt[self.camera_num] >= self.num_consecutive_frames:
-
+            #print("START HERE")
             # Reset the consecutive frames count
             self.consecutive_frames_cnt[self.camera_num] = 0
 
@@ -334,7 +340,7 @@ class EnvisionInferenceSystem(InferenceSystem):
             for violation in self.violations_array[self.camera_num][least_blurry_indx]:
                 if violation[-1] in violating_ids_list:
                     corrected_violations.append(violation)
-
+        #print(f"corrected_violations: {corrected_violations}")
         # Skip if there are no violations
         if len(corrected_violations):
             # Pick the least blurry image to send to the server
@@ -346,10 +352,13 @@ class EnvisionInferenceSystem(InferenceSystem):
             self.Update_Dictionary()
 
             # Iterate through all violations initially detected
-            # violation = [person_index, soldering_iron_index, camera_index, violation_code]
-            old_violations = [violation for violation in corrected_violations if violation[0] in self.violation_dictionary[self.camera_num]]
-            new_violations = [violation for violation in corrected_violations if not violation[0] in self.violation_dictionary[self.camera_num]]
-            
+            # violation = [person_index, soldering_iron_index, camera_index, violation_code, track_id]
+            # Problem was that the violation's person_idx was being checked if it was inside the 
+            # violation_dictionary when we should be searching for the track id of the person in
+            # the violation 
+            old_violations = [violation for violation in corrected_violations if violation[-1] in self.violation_dictionary[self.camera_num]]
+            new_violations = [violation for violation in corrected_violations if not violation[-1] in self.violation_dictionary[self.camera_num]]
+            #print(f"violation dictionary: {self.violation_dictionary[self.camera_num]}")
             # For loop for processing new violations with no track_id 
             for violation in new_violations:
                 # If not then add new violation object to the dictionary
@@ -357,11 +366,11 @@ class EnvisionInferenceSystem(InferenceSystem):
                 class_id = 3
                 timestamp = datetime.datetime.now()
                 violation_code = 0
-                track_id = violation[4] # self.detections.tracker_id[violation[0]]
+                track_id = violation[-1] # self.detections.tracker_id[violation[0]]
                 # Creates a violation object to be stored in the 
                 self.violation_dictionary[self.camera_num][track_id] = Violation(camera_id=camera_id, class_id=class_id, timestamp=timestamp, violation_code=violation_code)
                 # After dict is updated, prep to send to server
-                self.violation_to_server.append(violation)
+                self.violation_to_server[self.camera_num].append(violation)
                 
 
             # For loop for processing old violations with a track_id
@@ -370,8 +379,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 # in the last 10 minutes 
                 class_id = 3  
                 violation_code = 0
-                print(self.violation_dictionary)
-                violation_object = self.violation_dictionary[self.camera_num][violation[0]]
+                violation_object = self.violation_dictionary[self.camera_num][violation[-1]]
                 if violation_object.Check_Code(violation_code, class_id):
                     # If true, violation already exists and is not valid
                     continue
@@ -379,33 +387,44 @@ class EnvisionInferenceSystem(InferenceSystem):
                     # If false, then that means that violation is valid and
                     # should be added to the list of violations to be sent
                     # to the server 
-                    self.violation_to_server.append(violation)
+                    self.violation_to_server[self.camera_num].append(violation)
                     # Add code to modify the violation object
                     violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
-
-            # Annotate the frame's detections
-            frame = self.array_for_frames[self.camera_num][least_blurry_indx]
-            frame = self.annotate_violations(frame=frame)
-
-            # Telegram Bot sends in the picture and description of how many violations happened
-            # self.Telegram_Notification_Implementation(frame=frame)
-
-            #  Compliance Logic
-            img_to_send = frame
-
-            timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
-
-            data = {
-                'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
-                'timestamps': timestamp_to_send, # We only need a timestamp
-                'rules_broken': str(rules_broken),
-                'compliant': "False"
-            }
+            #print(f"{self.violation_to_server[self.camera_num]}")
+            #print(f"Number of violations being sent to the server: {len(self.violation_to_server[self.camera_num])}")
             
-            print("violation detected - sending images")
-            # send the actual image to the server
-            sendImageToServer(img_to_send, data, IP_address=self.server_IP)
+            if len(self.violation_to_server[self.camera_num]):
+                # Annotate the frame's detections
+                frame = self.array_for_frames[self.camera_num][least_blurry_indx]
+                #frame = self.annotate_violations(frame=frame)
+
+                # Telegram Bot sends in the picture and description of how many violations happened
+                # self.Telegram_Notification_Implementation(frame=frame)
+
+                #  Compliance Logic
+                img_to_send = frame
+
+                timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
+
+                data = {
+                    'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
+                    'timestamps': timestamp_to_send, # We only need a timestamp
+                    'rules_broken': str(rules_broken),
+                    'compliant': "False"
+                }
+                
+                #print("violation detected - sending images")
+                # send the actual image to the server
+                sendImageToServer(img_to_send, data, IP_address=self.server_IP)
+                #print("Image to be sent as a violation")
+                #cv2.imshow("Server Violation", img_to_send)
+                #print(f"{self.detections_array[self.camera_num][least_blurry_indx]}")
+            
+            #print("END HERE\n\n\n\n")
+
+            # Empty the list to be sent to the server after sending 
+            self.violation_to_server[self.camera_num] = []
 
             # Save the image locally for further model retraining
             if self.save:
@@ -431,10 +450,10 @@ class EnvisionInferenceSystem(InferenceSystem):
         file_path = self.create_file_path(frame=frame)
         # Second we send the image to the group chat. Status is used for debugging purposes 
         status = self.telegram_bot.teleImage(file_path=file_path) 
-        if len(self.violation_to_server) > 1:
-            message = f"We have found {self.violation_to_server} violations!"
+        if len(self.violation_to_server[self.camera_num]) > 1:
+            message = f"We have found {len(self.violation_to_server[self.camera_num])} violations!"
         else:
-            message = f"We have found {self.violation_to_server} violation!"
+            message = f"We have found {len(self.violation_to_server[self.camera_num])} violation!"
         # Third we send the message describing how many violations were found in the frame sent
         self.telegram_bot.teleMessage(message=message) 
         # Lastly we delete the saved frame from that file pathway
