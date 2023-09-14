@@ -69,9 +69,9 @@ class FrameProcessing():
         # Will be used to update the detections and
         # returns the relevant detection data 
         # relating to violations detected so far 
-        no_goggles_class = 65
-        solder_class = 66
-        hand_class = 76
+        no_goggles_class = 1
+        solder_class = 2
+        hand_class = 3
         # This will now activate when a person is 
         # holding a knife and phone in the same hand 
         if len(detections) == 0:
