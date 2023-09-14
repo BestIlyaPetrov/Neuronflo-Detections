@@ -32,7 +32,8 @@ def main(
     save_frames = False,
     new_boxes = False,
     annotate = False,
-    server_IP = 'local'
+    server_IP = 'local',
+    violation = False
     ):
 
     print_parameters()
@@ -65,8 +66,8 @@ def main(
             model_source="local",
             detected_items=["goggles","no_goggles","soldering","hand"],
             server_IP = server_IP,
-            annotate = annotate
-
+            annotate = annotate,
+            violation = violation
             )
 
         #Run the model
@@ -85,6 +86,7 @@ def parse_options():
     parser.add_argument('--weights', type=str, default='bestmaskv5.pt', help='model path')
     parser.add_argument('--annotate', action='store_true', help='return images with detection boxes')
     parser.add_argument('--server_IP', type=str, default='local', help='IP of the server the images are being sent to')
+    parser.add_argument('--violation', action='store_true', help='annotate the violation')
 
     options = parser.parse_args()
     return options

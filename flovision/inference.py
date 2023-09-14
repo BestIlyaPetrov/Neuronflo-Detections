@@ -42,6 +42,7 @@ class InferenceSystem:
         detected_items = kwargs.get('detected_items', [])
         server_IP = kwargs.get('server_IP', 'local')
         annotate = kwargs.get('annotate', False)
+        violation = kwargs.get('violation', False)
 
         print("PARAMETERS INSIDE INFERENCE.PY")
         print(f"model_name: {model_name}")
@@ -155,6 +156,9 @@ class InferenceSystem:
         self.item_dirs = [self.save_dir / item for item in detected_items]
         [item_dir.mkdir(parents=True, exist_ok=True) for item_dir in self.item_dirs]
 
+        # Decide if we want to see what will be sent to the server
+        self.violation_flag = violation
+        
         # TODO: add functionality to save text boxes along with the frames
 
     def ByteTracker_implementation(self, detections, byteTracker):
@@ -232,7 +236,6 @@ class InferenceSystem:
         self.absent_indices = [2* idx + 1 for idx in range(len(self.items))]
         item_sets = [[present, absent] for present, absent in zip(self.present_indices, self.absent_indices)]
         
-        
         class_names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
 
         while True:
@@ -250,7 +253,6 @@ class InferenceSystem:
 
                 if frame_unavailable:
                     continue
-              
 
                 ##### Iterating over frames saved from each of the connected cameras #####
                 
@@ -263,7 +265,6 @@ class InferenceSystem:
 
                     # Convert the results to a numpy array in the format [x_min, y_min, x_max, y_max, confidence, class]
                     predictions = results.xyxy[0].cpu().numpy()
-
 
                     # Define the confidence threshold
                     conf_thresh = 0.3
@@ -280,8 +281,6 @@ class InferenceSystem:
                     # Put the filtered results back into the results object
                     results.pred[0] = torch.tensor(filtered_predictions)
                     
-
-
                     # Convert the detections to the Supervision-compatible format
                     self.detections = sv.Detections.from_yolov5(results)
                     # Run NMS to remove double detections
@@ -315,6 +314,16 @@ class InferenceSystem:
 
                     if self.detection_trigger_flag[self.camera_num]:
                         self.trigger_action()
+                        # After the image is sent to the server
+                        if not self.detection_trigger_flag[self.camera_num]:
+                            # Display annotated frame with violations highlighted 
+                            if self.violation_flag:
+                                frame = self.annotate_violations()
+                                cv2.imshow(frame, "Violation Sent")
+
+                                # Reset the arrays for the data and the images, since we just sent it to the server
+                                self.detections_array[self.camera_num] = []
+                                self.array_for_frames[self.camera_num] = []
 
                     self.other_actions()
                 
@@ -349,6 +358,11 @@ class InferenceSystem:
         """
         raise NotImplementedError("Trigger action not implemented")
     
+    def annotate_violations(self) -> list:
+        """
+        Implement the desired annotation method
+        """
+        raise NotImplementedError("Trigger action not implemented")
 
     def other_actions(self) -> None:
         """
