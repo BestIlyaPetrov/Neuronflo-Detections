@@ -294,7 +294,8 @@ class InferenceSystem:
                     
                     # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate:
-                        frame = self.box_annotator.annotate(scene=frame, detections=self.detections)
+                        frame2 = frame.copy()
+                        frame2 = self.box_annotator.annotate(scene=frame2, detections=self.detections)
                         # frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
 
                     # FIX THIS LOGIC TO ALSO WORK IF MASK IS NOT PRESENT
@@ -318,8 +319,8 @@ class InferenceSystem:
                         if not self.detection_trigger_flag[self.camera_num]:
                             # Display annotated frame with violations highlighted 
                             if self.violation_flag:
-                                frame = self.annotate_violations()
-                                cv2.imshow(frame, "Violation Sent")
+                                violation_frame = self.annotate_violations()
+                                cv2.imshow(violation_frame, "Violation Sent")
 
                                 # Reset the arrays for the data and the images, since we just sent it to the server
                                 self.detections_array[self.camera_num] = []
@@ -329,7 +330,7 @@ class InferenceSystem:
                 
                     # Display frame
                     if self.display:
-                        cv2.imshow(f'Camera {self.cams[self.camera_num].src}', frame)
+                        cv2.imshow(f'Camera {self.cams[self.camera_num].src}', frame2)
 
                     # Update iteration index for the loop    
                     self.camera_num += 1
