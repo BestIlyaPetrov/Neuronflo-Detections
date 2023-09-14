@@ -183,8 +183,8 @@ class EnvisionInferenceSystem(InferenceSystem):
             solder_Xmin, solder_Ymin, solder_Xmax, solder_Ymax = detections.xyxy[solder_idx]
             solder_position = (int(solder_Xmin), int(solder_Ymin))
             solder_position2 = (int(person_Xmax), int(person_Ymax))
-            print(f"person_position = {person_position}")
-            print(f"solder_position = {solder_position}")
+            #print(f"person_position = {person_position}")
+            #print(f"solder_position = {solder_position}")
 
             # Add text annotations to the frame
             solder_annotation = f"{soldering_text}"
@@ -197,6 +197,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 # People With No Goggles
             frame = cv2.putText(frame, person_annotation, person_position, font, font_scale, font_color, line_thickness)
             frame = cv2.rectangle(frame, person_position, person_position2, font_color, line_thickness)
+        cv2.imshow(frame, "Violation Sent")
         return frame
 
     def trigger_action(self) -> None:
