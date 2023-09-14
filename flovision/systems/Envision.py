@@ -182,7 +182,7 @@ class EnvisionInferenceSystem(InferenceSystem):
             solder_idx = violation[1]
             solder_Xmin, solder_Ymin, solder_Xmax, solder_Ymax = detections.xyxy[solder_idx]
             solder_position = (int(solder_Xmin), int(solder_Ymin))
-            solder_position2 = (int(person_Xmax), int(person_Ymax))
+            solder_position2 = (int(solder_Xmax), int(solder_Ymax))
             #print(f"person_position = {person_position}")
             #print(f"solder_position = {solder_position}")
 
@@ -197,7 +197,6 @@ class EnvisionInferenceSystem(InferenceSystem):
                 # People With No Goggles
             frame = cv2.putText(frame, person_annotation, person_position, font, font_scale, font_color, line_thickness)
             frame = cv2.rectangle(frame, person_position, person_position2, font_color, line_thickness)
-        cv2.imshow(frame, "Violation Sent")
         return frame
 
     def trigger_action(self) -> None:
@@ -312,10 +311,10 @@ class EnvisionInferenceSystem(InferenceSystem):
                     self.save_frames(frame, self.camera_num)
                 
                 # Annotate the violations
-                frame = self.annotate_violations()
+                self.frame_with_violation = self.annotate_violations()
 
                 #  Compliance Logic
-                img_to_send = frame
+                # img_to_send = frame
 
                 timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
@@ -328,7 +327,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 }
                 
                 # send the actual image to the server
-                sendImageToServer(img_to_send, data, IP_address=self.server_IP)
+                sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP)
             
             # Empty the list to be sent to the server after sending 
             self.violation_to_server[self.camera_num] = []

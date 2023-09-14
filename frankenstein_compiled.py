@@ -31,9 +31,10 @@ def main(
     display_video = False,
     save_frames = False,
     new_boxes = False,
-    annotate = False,
     server_IP = 'local',
-    violation = False
+    annotate_raw = False,
+    annotate_violation = True,
+    debug = False
     ):
 
     print_parameters()
@@ -66,8 +67,9 @@ def main(
             model_source="local",
             detected_items=["goggles","no_goggles","soldering","hand"],
             server_IP = server_IP,
-            annotate = annotate,
-            violation = violation
+            annotate_raw = annotate_raw,
+            annotate_violation = annotate_violation,
+            debug=debug
             )
 
         #Run the model
@@ -84,9 +86,11 @@ def parse_options():
     parser.add_argument('--save-frames', action='store_true', help='save detected frames')
     parser.add_argument('--new-boxes', action='store_true', help='create new bounding boxes')
     parser.add_argument('--weights', type=str, default='bestmaskv5.pt', help='model path')
-    parser.add_argument('--annotate', action='store_true', help='return images with detection boxes')
     parser.add_argument('--server_IP', type=str, default='local', help='IP of the server the images are being sent to')
-    parser.add_argument('--violation', action='store_true', help='annotate the violation')
+    parser.add_argument('--annotate-raw', action='store_true', help='return images with detection boxes')
+    parser.add_argument('--annotate-violation', action='store_true', help='annotate the violation')
+    parser.add_argument('--debug', action='store_true', help='verbose mode')
+
 
     options = parser.parse_args()
     return options

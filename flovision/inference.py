@@ -41,10 +41,12 @@ class InferenceSystem:
         model_source = kwargs.get('model_source', 'local')
         detected_items = kwargs.get('detected_items', [])
         server_IP = kwargs.get('server_IP', 'local')
-        annotate = kwargs.get('annotate', False)
-        violation = kwargs.get('violation', False)
+        annotate_raw = kwargs.get('annotate_raw', False)
+        annotate_violation = kwargs.get('annotate_violation', False)
+        debug = kwargs.get('debug', False)
 
-        print("PARAMETERS INSIDE INFERENCE.PY")
+        print("\n\n##################################")
+        print("PARAMETERS INSIDE INFERENCE.PY\n")
         print(f"model_name: {model_name}")
         print(f"video_res: {video_res}")
         print(f"border_thickness: {border_thickness}")
@@ -57,7 +59,10 @@ class InferenceSystem:
         print(f"model_source: {model_source}")
         print(f"detected_items: {detected_items}")
         print(f"server_IP: {server_IP}")
-        print(f"annotate: {annotate}")
+        print(f"annotate_raw: {annotate_raw}")
+        print(f"annotate_violation: {annotate_violation}")
+        print(f"debug: {debug}")
+        print("##################################\n\n")
 
         """
         param:
@@ -78,6 +83,8 @@ class InferenceSystem:
         return:
             None
         """
+        # Verbose mode True/False
+        self.debug = debug
 
         if server_IP == "local":
             self.server_IP = findLocalServer()
@@ -119,7 +126,7 @@ class InferenceSystem:
         self.border_thickness = border_thickness
         self.display = display
         self.save = save
-        self.annotate = annotate
+        self.annotate_raw = annotate_raw
         self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
 
 
@@ -157,7 +164,7 @@ class InferenceSystem:
         [item_dir.mkdir(parents=True, exist_ok=True) for item_dir in self.item_dirs]
 
         # Decide if we want to see what will be sent to the server
-        self.violation_flag = violation
+        self.violation_flag = annotate_violation
         
         # TODO: add functionality to save text boxes along with the frames
 
@@ -293,7 +300,7 @@ class InferenceSystem:
                     mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
                     
                     # Annotate the zones and the detections on the frame if the flag is set
-                    if self.annotate:
+                    if self.annotate_raw:
                         frame2 = frame.copy()
                         frame2 = self.box_annotator.annotate(scene=frame2, detections=self.detections)
                         # frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
@@ -306,12 +313,14 @@ class InferenceSystem:
                     if self.trigger_event():
                         self.detection_trigger_flag[self.camera_num] = True
                         
-                        results_dict = results.pandas().xyxy[0].to_dict()
-                        results_json = json.dumps(results_dict)
-                        print()
-                        print("RESULTS: ", results)
-                        print("RESULTS JSON: ", results_json)
-                        print()
+                        if self.debug:
+                            results_dict = results.pandas().xyxy[0].to_dict()
+                            # results_json = json.dumps(results_dict) #don't delete this line pls
+                            print()
+                            print("TRIGGER EVENT - THESE WERE THE DETECTIONS:")
+                            print(results)
+                            # print("RESULTS JSON: ", results_json)
+                            print()
 
                     if self.detection_trigger_flag[self.camera_num]:
                         self.trigger_action()
@@ -319,8 +328,8 @@ class InferenceSystem:
                         if not self.detection_trigger_flag[self.camera_num]:
                             # Display annotated frame with violations highlighted 
                             if self.violation_flag:
-                                violation_frame = self.annotate_violations()
-                                #cv2.imshow(violation_frame, "Violation Sent")
+                                # violation_frame = self.annotate_violations()
+                                cv2.imshow("Violation Sent", self.frame_with_violation)
 
                                 # Reset the arrays for the data and the images, since we just sent it to the server
                                 self.detections_array[self.camera_num] = []
