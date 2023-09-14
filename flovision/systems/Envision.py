@@ -303,7 +303,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                     violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
 
             if len(self.violation_to_server[self.camera_num]):
-                # Annotate the frame's detections
+                # Define the frame with the least blurry index
                 frame = self.array_for_frames[self.camera_num][least_blurry_indx]
                 
                 # Save the image locally for further model retraining
