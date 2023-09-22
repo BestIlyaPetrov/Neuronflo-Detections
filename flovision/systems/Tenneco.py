@@ -85,6 +85,21 @@ class TennecoInferenceSystem(InferenceSystem):
         self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
         self.violation_to_server = [[] for _ in range(len(self.cams))]
+        self.tracker_id_side_entered = [{} for _ in range(len(self.cams))]
+    
+    def findCenter(self, minX, minY, maxX, maxY):
+        # Will find the center of a detection when given the 
+        # min and max for the X and Y coordinates. 
+        centerX = round(minX + (maxX - minX)/2)
+        centerY = round(minY + (maxY - minY)/2)
+        return centerX, centerY
+
+    def tracker_id_side_entered(self) -> None:
+        # List comprehension to dump old track ids
+        # Will dump a track id if it's older than 1 min
+        # key = tracker_id
+        # value = ["L or R", datetime_obj] 
+        self.tracker_id_side_entered[self.camera_num] = {key:value for key, value in self.tracker_id_side_entered[self.camera_num].items() if (datetime.datetime.now() - value[1]) < datetime.timedelta(minutes=1)}
 
     def Update_Dictionary(self) -> None:
         # Will update the violation_dictionary to contain the
@@ -259,9 +274,13 @@ class TennecoInferenceSystem(InferenceSystem):
             for violation in new_violations:
                 # If not then add new violation object to the dictionary
                 camera_id = self.camera_num
-                class_id = 3
+                class_id = violation[0]
                 timestamp = datetime.datetime.now()
-                violation_code = 0
+                violation_code = 0 if class_id == 1 else 1 
+                # Meaning that if there's no goggles detected 
+                # the violation code will be 0 and if no boots
+                # are detected then the code will be 1.
+ 
                 track_id = violation[-1] # self.detections.tracker_id[violation[0]]
                 # Creates a violation object to be stored in the 
                 self.violation_dictionary[self.camera_num][track_id] = Violation(camera_id=camera_id, class_id=class_id, timestamp=timestamp, violation_code=violation_code)
@@ -272,8 +291,8 @@ class TennecoInferenceSystem(InferenceSystem):
             for violation in old_violations:
                 # Check if violation object has record of the same violation 
                 # in the last 10 minutes 
-                class_id = 3  
-                violation_code = 0
+                class_id = violation[0]
+                violation_code = 0 if class_id == 1 else 1 
                 violation_object = self.violation_dictionary[self.camera_num][violation[-1]]
                 if violation_object.Check_Code(violation_code, class_id):
                     # If true, violation already exists and is not valid
@@ -301,7 +320,7 @@ class TennecoInferenceSystem(InferenceSystem):
                 # img_to_send = frame
 
                 timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
+                rules_broken = ["No goggles were detected." if self.camera_num == 0 else "Wrong shoes detected." for violation in self.violation_to_server[self.camera_num]]
 
                 data = {
                     'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
@@ -383,16 +402,49 @@ class FrameProcessing():
         no_goggles_class = 1
         no_boots_class = 3
         # Add the index, class, and track ID to the list of violations
-        for no_goggle_index in self.no_goggles_index:
-            track_id = self.detections.tracker_id[no_goggle_index]
-            violation = [no_goggles_class, no_goggle_index, track_id]
-            violations.append(violation)
-        
-        for no_boots_index in self.no_boots_index:
-            track_id = self.detections.tracker_id[no_boots_index]
-            violation = [no_boots_class, no_boots_index, track_id]
-            violations.append(violation)
-        
-        return violations
-        
+        if self.system.camera_num == 0:
+            for no_goggle_index in self.no_goggles_index:
+                track_id = self.detections.tracker_id[no_goggle_index]
+                violation = [no_goggles_class, no_goggle_index, track_id]
 
+                # If track id is not in the system yet, place it in 
+                if track_id not in self.system.tracker_id_side_entered[self.system.camera_num]:
+                    minX, minY, maxX, maxY = self.detections.xyxy[no_goggle_index]
+                    centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+                    if float(centerX)/float(self.system.frame_width) < 0.5:
+                        self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["L", datetime.datetime.now()]
+                    else:
+                        self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["R", datetime.datetime.now()]
+                    
+                # If the tracker_id already exists and showed that the detection entered from a side 
+                # that indicated someone leaving the facility, then the violation will be skipped 
+                if self.system.tracker_id_side_entered[self.system.camera_num][track_id] != None:
+                    if self.system.tracker_id_side_entered[self.system.camera_num][track_id][0] == 'L':
+                        continue
+                
+                violations.append(violation)
+        else:
+            for no_boots_index in self.no_boots_index:
+                track_id = self.detections.tracker_id[no_boots_index]
+                violation = [no_boots_class, no_boots_index, track_id]
+                
+                # If track id is not in the system yet, place it in 
+                if track_id not in self.system.tracker_id_side_entered[self.system.camera_num]:
+                    minX, minY, maxX, maxY = self.detections.xyxy[no_boots_index]
+                    centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+                    if float(centerX)/float(self.system.frame_width) < 0.5:
+                        self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["L", datetime.datetime.now()]
+                    else:
+                        self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["R", datetime.datetime.now()]
+                
+                # If the tracker_id already exists and showed that the detection entered from a side 
+                # that indicated someone leaving the facility, then the violation will be skipped 
+                if self.system.tracker_id_side_entered[self.system.camera_num][track_id] != None:
+                    if self.system.tracker_id_side_entered[self.system.camera_num][track_id][0] == 'L':
+                        continue
+                
+                violations.append(violation)
+
+        # Now a violation will only occur if there's someone with the wrong shoes or 
+        # wearing no goggles detected  
+        return violations

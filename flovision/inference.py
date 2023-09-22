@@ -331,9 +331,9 @@ class InferenceSystem:
                                 # violation_frame = self.annotate_violations()
                                 cv2.imshow("Violation Sent", self.frame_with_violation)
 
-                                # Reset the arrays for the data and the images, since we just sent it to the server
-                                self.detections_array[self.camera_num] = []
-                                self.array_for_frames[self.camera_num] = []
+                            # Reset the arrays for the data and the images, since we just sent it to the server
+                            self.detections_array[self.camera_num] = []
+                            self.array_for_frames[self.camera_num] = []
 
                     self.other_actions()
                 
