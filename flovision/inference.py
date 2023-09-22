@@ -1,385 +1,215 @@
-# Make a general class for inference system, which will be inherited by the entrance and laser inference system
-
-from threading import Thread
 import cv2
-import time
+import torch
 import numpy as np
-import torch, torchvision
-import json
-import datetime
-import time
-
-import supervision as sv
-import traceback
-import collections
+import os
 from pathlib import Path
-
-from .bbox_gui import create_bounding_boxes, load_bounding_boxes
-from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices
-from .comms import sendImageToServer
+import traceback
+import supervision as sv
+from datetime import datetime
+from .video import vStream, get_device_indices
 from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
-from .face_id import face_recog
+from .comms import sendImageToServer
+from .bbox_gui import create_bounding_boxes, load_bounding_boxes
 
-import os
 
-class InferenceSystem:
-    """
-    General class for inference system
-    """
-    # def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[], server_IP='local', annotate=False) -> None:
-    def __init__(self, **kwargs) -> None:
-        model_name = kwargs.get('model_name')
-        video_res = kwargs.get('video_res')
-        border_thickness = kwargs.get('border_thickness')
-        display = kwargs.get('display')
-        save = kwargs.get('save')
-        bboxes = kwargs.get('bboxes')
-        num_devices = kwargs.get('num_devices')
-        model_type = kwargs.get('model_type', 'custom')
-        model_directory = kwargs.get('model_directory', "./")
-        model_source = kwargs.get('model_source', 'local')
-        detected_items = kwargs.get('detected_items', [])
-        server_IP = kwargs.get('server_IP', 'local')
-        annotate_raw = kwargs.get('annotate_raw', False)
-        annotate_violation = kwargs.get('annotate_violation', False)
-        debug = kwargs.get('debug', False)
-
-        print("\n\n##################################")
-        print("PARAMETERS INSIDE INFERENCE.PY\n")
-        print(f"model_name: {model_name}")
-        print(f"video_res: {video_res}")
-        print(f"border_thickness: {border_thickness}")
-        print(f"display: {display}")
-        print(f"save: {save}")
-        print(f"bboxes: {bboxes}")
-        print(f"num_devices: {num_devices}")
-        print(f"model_type: {model_type}")
-        print(f"model_directory: {model_directory}")
-        print(f"model_source: {model_source}")
-        print(f"detected_items: {detected_items}")
-        print(f"server_IP: {server_IP}")
-        print(f"annotate_raw: {annotate_raw}")
-        print(f"annotate_violation: {annotate_violation}")
-        print(f"debug: {debug}")
-        print("##################################\n\n")
-
-        """
-        param:
-            model_name: name of the model to be used for inference
-            video_res: resolution of the video
-            border_thickness: thickness of the border around the region of interest
-            display: whether to display the video or not
-            save: whether to save the video or not
-            bboxes: whether to use bounding boxes or not
-            num_devices: number of devices to be used for inference
-            model_type: type of the model to be used for inference
-            model_directory: directory where the model is stored
-            model_source: source of the model, usually custom
-            detected_items: list of items to be detected
-            server_IP: specify which server to send violations to
-            annotate: set true to draw detection boxes in images
-
-        return:
-            None
-        """
-        # Verbose mode True/False
-        self.debug = debug
-
-        if server_IP == "local":
-            self.server_IP = findLocalServer()
+class InferenceModel:
+    def __init__(self, model_directory, model_type, model_name, model_source='local', device='0'):
+        self.model = self.load_model(model_directory, model_type, model_name, model_source, device)
+        self.model.eval()
+        
+    @staticmethod
+    def load_model(model_directory, model_type, model_name, model_source, device):
+        if model_type == 'custom':
+            return torch.hub.load(model_directory, model_type, path=model_name, force_reload=True, source=model_source, device=device)
         else:
-            self.server_IP = server_IP
-        cap_index = get_device_indices(quantity = num_devices)
-
-        # Initialize the cameras
-        self.cams = [vStream(cap_index[i], video_res) for i in range(num_devices)]
-
-        # Initialize the jetson's peripherals and GPIO pins
-        self.jetson = Jetson()
-
-        # Define the detection regions
-        zone_polygons = []
-
-        func = create_bounding_boxes if bboxes else load_bounding_boxes
-        for i, cam in enumerate(self.cams):
-            coordinates = func(cam)
-            zone_polygons.append(coordinates)
-
-        # TODO: improve zone management
-        # 1. Need several zones per camera
-        # 2. Need to neatly store the coordinates - not just coordinates0.json and coordinates1.json
-
-        # Load the model
-        self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
-                    if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
+            return torch.hub.load(model_directory, model_name, device=device, force_reload=True)
         
-        self.model.eval() #set the model into eval mode
 
-        # Create ByteTracker objects for each camera feed
-        self.trackers = [sv.ByteTrack(match_thresh=0.4) for i in range(num_devices)]
+class ByteTracker:
+    def __init__(self, match_thresh=0.4):
+        self.tracker = sv.ByteTrack(match_thresh)
 
-        # Set frame params
-        self.frame_width = video_res[0]
-        self.frame_height = video_res[1]
-        self.frame_size = (self.frame_width, self.frame_height)
-        self.border_thickness = border_thickness
-        self.display = display
-        self.save = save
-        self.annotate_raw = annotate_raw
-        self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
-
-
-        # Set the zone params
-        colors = sv.ColorPalette.default()
-        self.zones = [
-            sv.PolygonZone(
-                polygon=polygon,
-                frame_resolution_wh=self.frame_size
-            )
-            for polygon
-            in zone_polygons
-        ]
-        self.zone_annotators = [
-            sv.PolygonZoneAnnotator(
-                zone=zone,
-                color=colors.by_idx(index + 2),
-                thickness=1,
-                text_thickness=1,
-                text_scale=1
-            )
-            for index, zone
-            in enumerate(self.zones)
-        ]
-
-        self.box_annotator = sv.BoxAnnotator(thickness=1, text_thickness=1, text_scale=1)
-
-        # Directory to save the frames - for training
-        self.save_dir = Path.cwd().parent / 'saved_frames'
-        self.save_dir.mkdir(parents=True, exist_ok=True)
-
-        # Directories for each item to be detected
-        self.items = detected_items
-        self.item_dirs = [self.save_dir / item for item in detected_items]
-        [item_dir.mkdir(parents=True, exist_ok=True) for item_dir in self.item_dirs]
-
-        # Decide if we want to see what will be sent to the server
-        self.violation_flag = annotate_violation
-        
-        # TODO: add functionality to save text boxes along with the frames
-
-    def ByteTracker_implementation(self, detections, byteTracker):
-        # byteTracker is the sv.ByteTrack() object 
-        byte_tracker = byteTracker
-        new_detections = []
+    def update_with_detections(self, detections):
         if len(detections) != 0:
-            new_detections = byte_tracker.update_with_detections(detections)
-            #Sort both detections and new_detections based on confidence scores
-            sorted_original_indices = np.argsort(detections.confidence)
-            sorted_new_indices = np.argsort(new_detections.confidence)
-            # Create a mapping of indices between the sorted original detections and the sorted new detections
-            index_mapping = dict(zip(sorted_new_indices, sorted_original_indices))
-            # Update the class_ids in new_detections based on this mapping
-            for new_idx, original_idx in index_mapping.items():
-                new_detections.class_id[new_idx] = detections.class_id[original_idx]
+            new_detections = self.tracker.update_with_detections(detections)
+            return self.update_class_ids(new_detections, detections)
+        return []
+
+    @staticmethod
+    def update_class_ids(new_detections, detections):
+        sorted_original_indices = np.argsort(detections.confidence)
+        sorted_new_indices = np.argsort(new_detections.confidence)
+        index_mapping = dict(zip(sorted_new_indices, sorted_original_indices))
+        for new_idx, original_idx in index_mapping.items():
+            new_detections.class_id[new_idx] = detections.class_id[original_idx]
         return new_detections
 
-    def stop(self):
-        """
-        Stop the inference system
-        """
-        print("Stopping detections and releasing cameras")
+
+class Camera:
+    def __init__(self, src, resolution):
+        self.capture = vStream(src, resolution)
+
+    def get_frame(self):
+        return self.capture.getFrame()
+
+class Zone:
+    def __init__(self, zone_id, frame_resolution_wh, polygon, color, thickness=1, text_thickness=1, text_scale=1):
+        self.zone_id = zone_id
+        self.zone = sv.PolygonZone(polygon=polygon, frame_resolution_wh=frame_resolution_wh)
+        self.annotator = sv.PolygonZoneAnnotator(zone=self.zone, color=color, thickness=thickness, text_thickness=text_thickness, text_scale=text_scale)
+
+    def trigger(self, detections):
+        return self.zone.trigger(detections=detections)
+    
+    def check_and_store_violations(self, detections, camera_idx):
+        triggered_detections = self.trigger(detections)
+        violations = []
+        for detection in triggered_detections:
+            violation = Violation(camera_id=camera_idx, class_id=detection.class_id, timestamp=datetime.datetime.now(), violation_code=f"Zone{self.zone_id}")
+            violations.append(violation)
+        return violations
+
+
+class InferenceSystem:
+    def __init__(self, **kwargs):
+        self._initialize_attributes(**kwargs)
+        self._initialize_cameras()
+        self._initialize_zones()
+        self._initialize_directories()
+        self.model = InferenceModel(self.model_directory, self.model_type, self.model_name, self.model_source).model
+        self.trackers = [ByteTracker() for _ in range(self.num_devices)]
+        self.box_annotator = sv.BoxAnnotator(thickness=1, text_thickness=1, text_scale=1)
+        self.violations_dict = {}  # Dictionary to store violations with track_id as key
+
+    def _initialize_attributes(self, **kwargs):
+        self.model_name = kwargs.get('model_name')
+        self.video_res = kwargs.get('video_res', (640, 480))
+        self.border_thickness = kwargs.get('border_thickness', 1)
+        self.display = kwargs.get('display', False)
+        self.save = kwargs.get('save', False)
+        self.bboxes = kwargs.get('bboxes', False)
+        self.num_devices = kwargs.get('num_devices', 1)
+        self.model_type = kwargs.get('model_type', 'custom')
+        self.model_directory = kwargs.get('model_directory', "./")
+        self.model_source = kwargs.get('model_source', 'local')
+        self.detected_items = kwargs.get('detected_items', [])
+        self.server_IP = kwargs.get('server_IP', findLocalServer())
+        self.annotate_raw = kwargs.get('annotate_raw', False)
+        self.annotate_violation = kwargs.get('annotate_violation', False)
+        self.debug = kwargs.get('debug', False)
+        self.cams = []
+        self.zones = []
+        self.item_dirs = []
+        self.consecutive_frames_cnt = [0 for _ in range(self.num_devices)]
+        self.jetson = Jetson()
+        
+    def _initialize_cameras(self):
+        cap_indices = get_device_indices(quantity=self.num_devices)
+        self.cams = [Camera(cap_indices[i], self.video_res) for i in range(self.num_devices)]
+
+    def _initialize_zones(self):
+        func = create_bounding_boxes if self.bboxes else load_bounding_boxes
+        zone_polygons_per_cam = [func(cam) for cam in self.cams]
+        colors = sv.ColorPalette.default()
+        for i, zone_polygons in enumerate(zone_polygons_per_cam):
+            self.zones.append([Zone(j, self.video_res, polygon, colors[j]) for j, polygon in enumerate(zone_polygons)])
+
+        
+    def _initialize_directories(self):
+        self.item_dirs = [Path(f"./data/{item}") for item in self.detected_items]
+        for dir_ in self.item_dirs:
+            dir_.mkdir(exist_ok=True, parents=True)
+
+    def save_detections(self, idx, detections):
+        max_idx = get_highest_index(self.item_dirs[idx])
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        image_file_path = self.item_dirs[idx] / f"{timestamp}_{max_idx}.png"
+        cv2.imwrite(str(image_file_path), detections.frame)
+        sendImageToServer(image_file_path, self.server_IP)
+
+    def infer(self):
+        for idx, cam in enumerate(self.cams):
+            try:
+                frame = cam.get_frame()
+                detections = self.model.detect(frame, self.detected_items)
+                detections = self.trackers[idx].update_with_detections(detections)
+                self._process_detections(idx, detections)
+            except Exception as e:
+                if self.debug:
+                    print("Error occurred: ", e)
+                    traceback.print_exc()
+
+
+    def _display_or_save(self, idx, detections):
+        if self.display:
+            cv2.imshow(f"Camera {idx}", detections.frame)
+        if self.save:
+            save_path = Path(f"./data/cam_{idx}")
+            save_path.mkdir(exist_ok=True, parents=True)
+            filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            cv2.imwrite(str(save_path / f"{filename}.png"), detections.frame)
+
+    def release_resources(self):
         for cam in self.cams:
             cam.capture.release()
-
-        self.jetson.cleanup()
-
         cv2.destroyAllWindows()
-        exit(1)
 
-    def save_frames(self,frame, cam_idx):
-        """
-        Save the frames to the disk
-        """
-        try:
-            if not os.path.exists('../saved_frames'):
-                os.makedirs('../saved_frames')
-            if not os.path.exists(f'../saved_frames/cam{cam_idx}'):
-                os.makedirs(f'../saved_frames/cam{cam_idx}')
-            item_count = get_highest_index(f'../saved_frames/cam{cam_idx}') + 1
-            cv2.imwrite(str(f'../saved_frames/cam{cam_idx}/img_{item_count:04d}.jpg'), frame)
-
-        except Exception as e:
-            print("Error saving frames")
-            print(e)
-            traceback.print_exc()
-
-    def run(self, iou_thres, agnostic_nms):
-        """
-        param:
-            iou_thres: iou threshold
-            agnostic_nms: agnostic nms
-
-        return:
-            None
-        """
-
-        print("Starting inference system")
-
-        zone_count = 0 # count the number of zones
-        self.num_consecutive_frames = 3 # num_consecutive_frames that we want to window (to reduce jitter)
-
-        # List of lists, beacause for each camera feed, we have a list of detections we save to choose the prevalent one as jitter reduction technique (aka goggle, no_goggle, goggle -> goggle )
-        self.detections_array = [[] for _ in range(len(self.zones))]
-
-        # List of lists, beacause for each camera feed, we have a list of frames we save to choose the least blurry one
-        self.array_for_frames = [[] for _ in range(len(self.zones))]
-
-        # Need a trigger flag for each of the camera feeds. Initialized to False
-        self.detection_trigger_flag = [False for _ in range(len(self.zones))]
-
-        # Split detections into different sets depending on object, by bounding box (aka [goggles, no_goggles])
-        self.present_indices = [2* idx for idx in range(len(self.items))]
-        self.absent_indices = [2* idx + 1 for idx in range(len(self.items))]
-        item_sets = [[present, absent] for present, absent in zip(self.present_indices, self.absent_indices)]
+    def _process_detections(self, idx, detections):
+        violations = []
+        for zone in self.zones[idx]:
+            zone_violations = zone.check_and_store_violations(detections, idx)
+            violations.extend(zone_violations)
         
-        class_names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
+        if violations:
+            self.handle_violations(violations, idx, detections)
+        
+        if self.save or self.display:
+            frame = detections.frame.copy()
+            for zone in self.zones[idx]:
+                frame = zone.annotator.annotate(frame)
+            detections.frame = frame
+            self._display_or_save(idx, detections)
 
-        while True:
-            try:
-                ### Saving a frame from each camera feed ###
-                self.captures = []
-                frame_unavailable = False
-                for cam in self.cams:
-                    ret, frame = cam.getFrame()
-                    if not ret:
-                        frame_unavailable = True
-                        break
+        if self.annotate_raw:
+            detections = self.box_annotator.annotate(detections)
+            self._display_or_save(idx, detections)
 
-                    self.captures.append(frame)
+    def handle_violations(self, violations, idx, detections):
+        timestamp = datetime.datetime.now()
+        for violation in violations:
+            track_id = violation.detection.track_id  # Assume detection has a track_id attribute
+            camera_id = idx
+            violation_code = f"Zone{violation.zone_id}"  # Example, you can modify as per requirement
+            class_id = violation.detection.class_id  # Assume detection has a class_id attribute
 
-                if frame_unavailable:
-                    continue
+            if track_id in self.violations_dict:
+                violation_obj = self.violations_dict[track_id]
+                if not violation_obj.Check_Code(violation_code, class_id):
+                    violation_obj.Add_Code(violation_code, class_id)
+            else:
+                violation_obj = Violation(camera_id, class_id, timestamp, violation_code)
+                self.violations_dict[track_id] = violation_obj
 
-                ##### Iterating over frames saved from each of the connected cameras #####
-                
-                self.camera_num = 0 # the index of the vide stream being processed
-                # Iterate over cameras, 1 frame from each  
-                for frame in self.captures:
-                    # Send through the model
-                    detection_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    results = self.model(detection_frame)
+            print(f"Violation detected in Zone {violation.zone_id} of Camera {camera_id}, Track ID: {track_id}")
 
-                    # Convert the results to a numpy array in the format [x_min, y_min, x_max, y_max, confidence, class]
-                    predictions = results.xyxy[0].cpu().numpy()
+        self.prune_violations()
 
-                    # Define the confidence threshold
-                    conf_thresh = 0.3
+    def prune_violations(self):
+        to_remove = []
+        for track_id, violation_obj in self.violations_dict.items():
+            if not violation_obj.Update_Time():
+                to_remove.append(track_id)
+        
+        for track_id in to_remove:
+            del self.violations_dict[track_id]
 
-                    # Filter out predictions with a confidence score below the threshold
-                    filtered_predictions = predictions[predictions[:, 4] > conf_thresh]
-
-                    # for pred in filtered_predictions:
-                    #     class_index = int(pred[5])  # get the class index from the prediction
-                    #     class_name = class_names[class_index]
-                    #     print(f"Class ID: {class_index}, Class Name: {class_name}, Confidence: {pred[4]}")
-                    # print()
-                    # print()
-                    # Put the filtered results back into the results object
-                    results.pred[0] = torch.tensor(filtered_predictions)
-                    
-                    # Convert the detections to the Supervision-compatible format
-                    self.detections = sv.Detections.from_yolov5(results)
-                    # Run NMS to remove double detections
-                    self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)  # apply NMS to detections
-                    # If detections present, track them. Assign track_id
-                    if len(self.detections) > 0:
-                        self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
-
-                    # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
-                    mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
-                    
-                    # Annotate the zones and the detections on the frame if the flag is set
-                    if self.annotate_raw:
-                        frame2 = frame.copy()
-                        frame2 = self.box_annotator.annotate(scene=frame2, detections=self.detections)
-                        # frame = self.zone_annotators[self.camera_num].annotate(scene=frame)
-
-                    # FIX THIS LOGIC TO ALSO WORK IF MASK IS NOT PRESENT
-                    # Split into different sets of detections depending on object, by bounding box (aka tuple(goggles/no_goggles, shoes/no_shoes) )
-                    self.item_detections = tuple([self.detections[mask & np.isin(self.detections.class_id, item_sets[i])] for i in range(len(item_sets))])
-
-                    # TRIGGER EVENT - TODO: ADD MULTIPLE TRIGGER EVENTS FUNCTIONALITY
-                    if self.trigger_event():
-                        self.detection_trigger_flag[self.camera_num] = True
-                        
-                        if self.debug:
-                            results_dict = results.pandas().xyxy[0].to_dict()
-                            # results_json = json.dumps(results_dict) #don't delete this line pls
-                            print()
-                            print("TRIGGER EVENT - THESE WERE THE DETECTIONS:")
-                            print(results)
-                            # print("RESULTS JSON: ", results_json)
-                            print()
-
-                    if self.detection_trigger_flag[self.camera_num]:
-                        self.trigger_action()
-                        # After the image is sent to the server
-                        if not self.detection_trigger_flag[self.camera_num]:
-                            # Display annotated frame with violations highlighted 
-                            if self.violation_flag:
-                                # violation_frame = self.annotate_violations()
-                                cv2.imshow("Violation Sent", self.frame_with_violation)
-
-                                # Reset the arrays for the data and the images, since we just sent it to the server
-                                self.detections_array[self.camera_num] = []
-                                self.array_for_frames[self.camera_num] = []
-
-                    self.other_actions()
-                
-                    # Display frame
-                    if self.display:
-                        cv2.imshow(f'Camera {self.cams[self.camera_num].src}', frame2)
-
-                    # Update iteration index for the loop    
-                    self.camera_num += 1
-
-            except Exception as e:
-                print("Frame unavailable, error was: ", e)
-                traceback.print_exc()
-            
-            # If frame is being displayed
-            if self.display:
-                if cv2.waitKey(1) == ord('q'):
-                    self.stop()
-
-    def trigger_event(self) -> bool:
-        """
-        Determine if a trigger event has occurred
-
-        return:
-            True if a trigger event has occurred, False otherwise
-        """
-        raise NotImplementedError("Trigger event not implemented")
-    
-    def trigger_action(self) -> None:
-        """
-        Perform the trigger action
-        """
-        raise NotImplementedError("Trigger action not implemented")
-    
-    def annotate_violations(self) -> list:
-        """
-        Implement the desired annotation method
-        """
-        raise NotImplementedError("Trigger action not implemented")
-
-    def other_actions(self) -> None:
-        """
-        Perform other actions
-        """
-        pass
-
+    def save_detections(self, idx, detections, violations):
+        max_idx = get_highest_index(self.item_dirs[idx])
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        image_file_path = self.item_dirs[idx] / f"{timestamp}_{max_idx}.png"
+        cv2.imwrite(str(image_file_path), detections.frame)
+        sendImageToServer(image_file_path, self.server_IP)
 
 
 class Violation():
