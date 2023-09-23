@@ -137,10 +137,8 @@ class TennecoInferenceSystem(InferenceSystem):
 
     def annotate_violations(self) -> list:
         """
-        NOT DONE
+        NOT TESTED
         """
-
-
         # Use this function to annotate the frame's
         # valid violations.   
         violations = self.violation_to_server[self.camera_num]
@@ -150,48 +148,44 @@ class TennecoInferenceSystem(InferenceSystem):
         # violation = [person_index, soldering_iron_index, camera_index, violation_code, track_id]
         # violations = [violation, violation, ...]
         person_text = 'No Goggles'
-        soldering_text = 'Active Soldering Iron'
+        shoes_text = 'Wrong Shoes'
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 1
-        font_color = (0, 0, 255)  # Red color in BGR format
+        font_scale = 0.5
+        font_color = (255, 255, 255)  # Red color in BGR format
+        box_color = (0, 0, 255)
         line_thickness = 2
+        font_thickness = 2
+
+        # violations = [[class_id, detection_index, detection_track_id],
+        #               [class_id, detection_index, detection_track_id], ...]
+
         for violation in violations:
             # Each iteration will text annotate a full violation
             # onto the frame. Each annotation will have a [int] 
             # at the end of the text annotation from the frame.
             # This is to indicate which detection is with which
             # that caused a violation 
+            class_id = violation[0]
+            detection_idx = violation[1]
+            Xmin, Ymin, Xmax, Ymax = detections.xyxy[detection_idx]
+            positions = [(int(Xmin), int(Ymin)), (int(Xmax), int(Ymax))]
+            text_position = (int(Xmin), int(Ymin)-5)
+            annotation_text = person_text if class_id == 1 else shoes_text
+            # For the text background
+            # Finds space required by the text so that we can put a background with that amount of width.
+            (w, h), _ = cv2.getTextSize(annotation_text, font, font_scale, font_thickness)
+            # Text background
+            frame = cv2.rectangle(frame, (Xmin, Ymin - 20), (Xmin + w, Ymin), box_color, -1)
+            # Label text
+            frame = cv2.putText(frame, annotation_text, text_position, font, font_scale, font_color, font_thickness)
+            # Bounding box
+            frame = cv2.rectangle(frame, positions[0], positions[1], box_color, line_thickness)
 
-            # Person annotation info-variables
-            person_idx = violation[0]
-            person_Xmin, person_Ymin, person_Xmax, person_Ymax = detections.xyxy[person_idx]
-            person_position = (int(person_Xmin), int(person_Ymin))
-            person_position2 = (int(person_Xmax), int(person_Ymax))
-
-            # Solder annotation info-variables
-            solder_idx = violation[1]
-            solder_Xmin, solder_Ymin, solder_Xmax, solder_Ymax = detections.xyxy[solder_idx]
-            solder_position = (int(solder_Xmin), int(solder_Ymin))
-            solder_position2 = (int(solder_Xmax), int(solder_Ymax))
-            #print(f"person_position = {person_position}")
-            #print(f"solder_position = {solder_position}")
-
-            # Add text annotations to the frame
-            solder_annotation = f"{soldering_text}"
-            person_annotation = f"{person_text}"
-
-            # Frame manipulation
-                # Soldering Irons
-            frame = cv2.putText(frame, solder_annotation, solder_position, font, font_scale, font_color, line_thickness)
-            frame = cv2.rectangle(frame, solder_position, solder_position2, font_color, line_thickness)
-                # People With No Goggles
-            frame = cv2.putText(frame, person_annotation, person_position, font, font_scale, font_color, line_thickness)
-            frame = cv2.rectangle(frame, person_position, person_position2, font_color, line_thickness)
         return frame
 
     def trigger_action(self) -> None:
         """
-        NOT DONE
+        NOT TESTED
         """
 
         """

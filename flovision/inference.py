@@ -20,6 +20,7 @@ from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
 from .face_id import face_recog
+from .record import Recorder
 
 import os
 
@@ -44,6 +45,7 @@ class InferenceSystem:
         annotate_raw = kwargs.get('annotate_raw', False)
         annotate_violation = kwargs.get('annotate_violation', False)
         debug = kwargs.get('debug', False)
+        record = kwargs.get('record', False)
 
         print("\n\n##################################")
         print("PARAMETERS INSIDE INFERENCE.PY\n")
@@ -165,6 +167,10 @@ class InferenceSystem:
 
         # Decide if we want to see what will be sent to the server
         self.violation_flag = annotate_violation
+
+        # Decides if the last 5 seconds should be stored
+        self.record = record
+        self.recorder = Recorder(system=self)
         
         # TODO: add functionality to save text boxes along with the frames
 
@@ -262,7 +268,10 @@ class InferenceSystem:
                     continue
 
                 ##### Iterating over frames saved from each of the connected cameras #####
-                
+                # If record flag raised, store frames 
+                if self.record:
+                    self.recorder.store()
+
                 self.camera_num = 0 # the index of the vide stream being processed
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
