@@ -8,24 +8,29 @@ points = []
 polygons = []
 
 def click_event(event, x, y, flags, param):
-    global points
+    global points, polygons
     if event == cv2.EVENT_LBUTTONDOWN:
         points.append((x, y))
         img_copy = param.copy()
-        if len(points) >= 3:
+        if len(points) >= 1 and len(polygons) == 0:
             cv2.polylines(img_copy, [np.array(points)], True, (0, 255, 0), 2)
+        elif len(polygons) >= 1:
+            for pts in polygons:
+                cv2.polylines(img_copy, [np.array(pts)], True, (0, 255, 0), 2) #draw existing polygons
+            cv2.polylines(img_copy, [np.array(points)], True, (0, 255, 0), 2) #draw new points
         cv2.imshow("Frame", img_copy)
 
 
 def save_coordinates(cap_idx):
     global points, polygons
     file_path = f'coordinates{cap_idx}.json'
-    polygons.append(points)
+    # polygons.append(points)
     with open(file_path, 'w') as f:
         json.dump(polygons, f)
     polygons_to_return = polygons.copy()
     polygons = []  # reset the polygons
     points = []  # reset the points
+    print("POLYGONS: ", polygons_to_return)
     return polygons_to_return
 
 
@@ -53,7 +58,7 @@ def create_bounding_boxes(cam):
             if len(points) >= 3:  # If valid polygon
                 polygons.append(points.copy())
                 points = []
-            cv2.imshow("Frame", frame)
+            # cv2.imshow("Frame", frame)
         elif key == ord('r'):  # reset the current polygon
             points = []
             cv2.imshow("Frame", frame)

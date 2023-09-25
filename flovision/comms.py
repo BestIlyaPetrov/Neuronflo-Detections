@@ -39,6 +39,7 @@ def authenticate(identifier, url):
 
     else:
         print('Failed to obtain token')
+        print(f"Server responded with: {response}")
         exit()
     ## END INITIAL AUTHENTICATION
 
@@ -46,7 +47,7 @@ def authenticate(identifier, url):
 
 def sendImageToServer(image, image_data, IP_address):
     global auth_token
-    url = f'http://{IP_address}:80/'
+    url = f'http://{IP_address}/'
     if auth_token == "":
         auth_token, csrf_token = authenticate(identifier = "jetson01", url=url) # TODO: add the identifier to dotenv
         # print("New auth token is: ", auth_token)

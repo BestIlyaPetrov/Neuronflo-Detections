@@ -1,5 +1,5 @@
 # from flovision import laser_inference, entrance_inference, comms, video, inference
-from flovision.systems import Entrance, Envision, LaserCutter, FaceRecognition
+from flovision.systems import Entrance, Envision, LaserCutter, FaceRecognition, Tenneco
 import cv2
 import argparse
 
@@ -42,18 +42,27 @@ def main(
 
     try:
         # Initialize the model
-        # inference_obj= laser_inference.LaserInferenceSystem(
-        #     model_name = "custom_models/"+weights,
-        #     video_res = video_res,
-        #     border_thickness = border_thickness,
-        #     display = display_video,
-        #     save = save_frames,
-        #     bboxes = new_boxes
-
-        # )
+        inference_obj= Tenneco.TennecoInferenceSystem(
+            model_name = weights,
+            video_res = video_res,
+            border_thickness = border_thickness,
+            display = display_video,
+            save = save_frames,
+            bboxes = new_boxes,
+            num_devices=2,
+            model_type="custom",
+            model_directory="./",
+            model_source="local",
+            detected_items=["goggles","no_goggles","laser_on","laser_off"],
+            server_IP = server_IP,
+            annotate_raw = annotate_raw,
+            annotate_violation = annotate_violation,
+            debug=debug
+        )
 
         # inference_obj = inference.EntranceInferenceSystem(
         print("Model name is:",weights)
+        """
         inference_obj = Envision.EnvisionInferenceSystem(
             model_name = weights, 
             video_res = video_res, 
@@ -71,9 +80,9 @@ def main(
             annotate_violation = annotate_violation,
             debug=debug
             )
-
+        """
         #Run the model
-        inference_obj.run(iou_thres, agnostic_nms)
+        # inference_obj.run(iou_thres, agnostic_nms)
     except KeyboardInterrupt:
         print()
         print("Keyboard interrupt. Exiting peacefully")
@@ -85,7 +94,7 @@ def parse_options():
     parser.add_argument('--display-video', action='store_true', help='show video feed')
     parser.add_argument('--save-frames', action='store_true', help='save detected frames')
     parser.add_argument('--new-boxes', action='store_true', help='create new bounding boxes')
-    parser.add_argument('--weights', type=str, default='bestmaskv5.pt', help='model path')
+    parser.add_argument('--weights', type=str, default='custom_models/bestmaskv5.pt', help='model path')
     parser.add_argument('--server_IP', type=str, default='local', help='IP of the server the images are being sent to')
     parser.add_argument('--annotate-raw', action='store_true', help='return images with detection boxes')
     parser.add_argument('--annotate-violation', action='store_true', help='annotate the violation')

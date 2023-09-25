@@ -49,6 +49,7 @@ class ByteTracker:
 class Camera:
     def __init__(self, src, resolution):
         self.capture = vStream(src, resolution)
+        self.src = src
 
     def get_frame(self):
         return self.capture.getFrame()
@@ -110,10 +111,10 @@ class InferenceSystem:
 
     def _initialize_zones(self):
         func = create_bounding_boxes if self.bboxes else load_bounding_boxes
-        zone_polygons_per_cam = [func(cam) for cam in self.cams]
+        zone_polygons_per_cam = [func(cam.capture) for cam in self.cams]
         colors = sv.ColorPalette.default()
         for i, zone_polygons in enumerate(zone_polygons_per_cam):
-            self.zones.append([Zone(j, self.video_res, polygon, colors[j]) for j, polygon in enumerate(zone_polygons)])
+            self.zones.append([Zone(j, self.video_res, np.array(polygon), colors.by_idx(j)) for j, polygon in enumerate(zone_polygons)])
 
         
     def _initialize_directories(self):
