@@ -94,12 +94,13 @@ class TennecoInferenceSystem(InferenceSystem):
         centerY = round(minY + (maxY - minY)/2)
         return centerX, centerY
 
-    def tracker_id_side_entered(self) -> None:
+    def tracker_id_side_entered_update(self) -> None:
         # List comprehension to dump old track ids
         # Will dump a track id if it's older than 1 min
         # key = tracker_id
         # value = ["L or R", datetime_obj] 
-        self.tracker_id_side_entered[self.camera_num] = {key:value for key, value in self.tracker_id_side_entered[self.camera_num].items() if (datetime.datetime.now() - value[1]) < datetime.timedelta(minutes=1)}
+        if self.tracker_id_side_entered[self.camera_num]:
+            self.tracker_id_side_entered[self.camera_num] = {key:value for key, value in self.tracker_id_side_entered[self.camera_num].items() if (datetime.datetime.now() - value[1]) < datetime.timedelta(minutes=1)}
 
     def Update_Dictionary(self) -> None:
         # Will update the violation_dictionary to contain the
@@ -243,9 +244,11 @@ class TennecoInferenceSystem(InferenceSystem):
             # This records the union of track_ids of the least blurry image and which 
             # ids are followed in multiple frames 
             for violation in self.violations_array[self.camera_num][least_blurry_indx]:
+                # For this code to work, remote that the the last index of violation must
+                # be the tracker id of that set of detections
                 if violation[-1] in violating_ids_list:
                     corrected_violations.append(violation)
-        #print(f"corrected_violations: {corrected_violations}")
+
         # Skip if there are no violations
         if len(corrected_violations):
             # Pick the least blurry image to send to the server
@@ -395,6 +398,7 @@ class FrameProcessing():
         violations = []
         no_goggles_class = 1
         no_boots_class = 3
+        self.system.tracker_id_side_entered_update()
         # Add the index, class, and track ID to the list of violations
         if self.system.camera_num == 0:
             for no_goggle_index in self.no_goggles_index:
@@ -430,7 +434,7 @@ class FrameProcessing():
                         self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["L", datetime.datetime.now()]
                     else:
                         self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["R", datetime.datetime.now()]
-                
+                # a = [{1:["L", datetime_obj]}, {}, {}]
                 # If the tracker_id already exists and showed that the detection entered from a side 
                 # that indicated someone leaving the facility, then the violation will be skipped 
                 if self.system.tracker_id_side_entered[self.system.camera_num][track_id] != None:
