@@ -327,8 +327,9 @@ class EnvisionInferenceSystem(InferenceSystem):
                     'compliant': "False"
                 }
                 
+                link = 'api/violation_update'
                 # send the actual image to the server
-                sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP)
+                sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP, link)
             
             # Empty the list to be sent to the server after sending 
             self.violation_to_server[self.camera_num] = []
@@ -368,12 +369,12 @@ class FrameProcessing():
         # Will be used to update the detections and
         # returns the relevant detection data 
         # relating to violations detected so far 
-        # no_goggles_class = 1
-        # solder_class = 2
-        # hand_class = 3
-        no_goggles_class = 65
-        solder_class = 66
-        hand_class = 76
+        no_goggles_class = 1
+        solder_class = 2
+        hand_class = 3
+        # no_goggles_class = 65
+        # solder_class = 66
+        # hand_class = 76
         # This will now activate when a person is 
         # holding a knife and phone in the same hand 
         if len(detections) == 0:

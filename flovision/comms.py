@@ -44,7 +44,7 @@ def authenticate(identifier, url):
 
 
 
-def sendImageToServer(image, image_data, IP_address):
+def sendImageToServer(image, image_data, IP_address, link):
     global auth_token
     url = f'http://{IP_address}:80/'
     if auth_token == "":
@@ -84,7 +84,7 @@ def sendImageToServer(image, image_data, IP_address):
     else:
         raise ValueError("Could not encode the frame as a JPEG image")
 
-    response = requests.post(url+'api/violation_update', files={'image': (timestamp_str+'.jpg', image_bytes)}, data=image_data, headers=headers)
+    response = requests.post(url+link, files={'image': (timestamp_str+'.jpg', image_bytes)}, data=image_data, headers=headers)
 
 
     # Check response status code
