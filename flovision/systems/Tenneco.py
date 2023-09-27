@@ -303,34 +303,37 @@ class TennecoInferenceSystem(InferenceSystem):
                     violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
 
             if len(self.violation_to_server[self.camera_num]):
-                # Define the frame with the least blurry index
-                frame = self.array_for_frames[self.camera_num][least_blurry_indx]
-                
-                # Save the image locally for further model retraining
-                if self.save:
-                    self.save_frames(frame, self.camera_num)
-                
-                # Annotate the violations
-                self.frame_with_violation = self.annotate_violations()
-
-                #  Compliance Logic
-                # img_to_send = frame
-
-                timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                rules_broken = ["No goggles were detected." if self.camera_num == 0 else "Wrong shoes detected." for violation in self.violation_to_server[self.camera_num]]
-
-                data = {
-                    'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
-                    'timestamps': timestamp_to_send, # We only need a timestamp
-                    'rules_broken': str(rules_broken),
-                    'compliant': "False"
-                }
-                
-                # send the actual image to the server
-                sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP)
+                self.system_send(least_blurry_indx=least_blurry_indx)
             
             # Empty the list to be sent to the server after sending 
             self.violation_to_server[self.camera_num] = []
+
+    def system_send(self, least_blurry_indx):
+        # Define the frame with the least blurry index
+        frame = self.array_for_frames[self.camera_num][least_blurry_indx]
+
+        # Save the image locally for further model retraining
+        if self.save:
+            self.save_frames(frame, self.camera_num)
+
+        # Annotate the violations
+        self.frame_with_violation = self.annotate_violations()
+
+        #  Compliance Logic
+        # img_to_send = frame
+
+        timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        rules_broken = ["No goggles were detected." if self.camera_num == 0 else "Wrong shoes detected."]
+
+        data = {
+            'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
+            'timestamps': timestamp_to_send, # We only need a timestamp
+            'rules_broken': str(rules_broken),
+            'compliant': "False"
+        }
+
+        # send the actual image to the server
+        sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP)
 
     def create_file_path(self, frame):
         # Ensure the home directory path is correct for your system

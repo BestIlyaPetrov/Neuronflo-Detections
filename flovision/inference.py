@@ -339,10 +339,14 @@ class InferenceSystem:
                             if self.violation_flag:
                                 # violation_frame = self.annotate_violations()
                                 cv2.imshow("Violation Sent", self.frame_with_violation)
+                            if self.record:
+                                # This will be the command for sending in the before and after footage of the violation
+                                self.recorder.send()
 
                             # Reset the arrays for the data and the images, since we just sent it to the server
                             self.detections_array[self.camera_num] = []
                             self.array_for_frames[self.camera_num] = []
+
 
                     self.other_actions()
                 

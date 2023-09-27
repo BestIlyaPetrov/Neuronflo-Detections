@@ -1,4 +1,7 @@
 from inference import InferenceSystem
+import multiprocessing
+import time
+import datetime
 
 '''
 PURPOSE
@@ -27,6 +30,7 @@ class Recorder():
     def __init__(self, system:InferenceSystem):
         self.system = system
         self.cam_feeds = [[] for _ in range(len(self.system.cams))]
+        self.processes = []
     
     def store(self):
         # Will store the most recently captured frames here.  
@@ -50,6 +54,32 @@ class Recorder():
             num += 1
     
     def send(self):
-        # Will send all of the frames recorded for the 
-        # last 5 seconds for the current camera.  
-        return self.cam_feeds[self.system.camera_num]
+        # Will start thread to execute code for sending in a video 
+        # of the violation 3 seconds before and 2 seconds after
+        
+        # Will clean up the finished processes 
+        self.update()
+        # Defines the thread
+        process = multiprocessing.Process(target=self.footage, args=())
+        # This will be stored in the object's collection of threads
+        collection = [datetime.datetime.now(), process]
+        self.processes.append(collection)
+        # This initializes the process
+        process.start()
+
+    
+    def footage(self):
+        # This will wait 2 seconds after the violation and send 
+        # the frames found in that camera's backlog of frames 
+        # to the server 
+        cam_num = self.system.camera_num
+        time.sleep(2)
+        footage = self.cam_feeds[cam_num]
+        """
+        PLACE LOGIC FOR HOW TO SEND VIDEO TO SERVER
+        """
+        pass
+
+    def update(self):
+        # If a thread is younger than 18 seconds, it stays
+        self.processes = [collection for collection in self.processes if ((datetime.datetime.now() - collection[0]) < datetime.timedelta(minutes=0.3))] # Extend the time duration if sending to the server takes longer than expected
