@@ -5,7 +5,7 @@ import socket
 from zeroconf import ServiceBrowser, Zeroconf
 
 import cv2
-import face_recognition
+import face_recognition # Causes problems on Windows
 
 class IPListener:
     def __init__(self, target_service_name):

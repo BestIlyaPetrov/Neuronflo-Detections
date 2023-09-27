@@ -1,4 +1,4 @@
-import face_recognition
+import face_recognition # Causes problems on Windows
 import cv2
 import numpy as np
 from .utils import *
