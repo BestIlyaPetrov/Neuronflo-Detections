@@ -321,14 +321,16 @@ class EnvisionInferenceSystem(InferenceSystem):
                 rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
 
                 data = {
+                    'zone': f"Envision_table_{self.camera_num}",
                     'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
                     'timestamps': timestamp_to_send, # We only need a timestamp
                     'rules_broken': str(rules_broken),
                     'compliant': "False"
                 }
                 
+                link = 'api/violation_update'
                 # send the actual image to the server
-                sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP)
+                sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP, link)
             
             # Empty the list to be sent to the server after sending 
             self.violation_to_server[self.camera_num] = []
@@ -398,6 +400,9 @@ class FrameProcessing():
         no_goggles_class = 1
         solder_class = 2
         hand_class = 3
+        # no_goggles_class = 65
+        # solder_class = 66
+        # hand_class = 76
         # This will now activate when a person is 
         # holding a knife and phone in the same hand 
         if len(detections) == 0:

@@ -338,7 +338,8 @@ class InferenceSystem:
                             # Display annotated frame with violations highlighted 
                             if self.violation_flag:
                                 # violation_frame = self.annotate_violations()
-                                cv2.imshow("Violation Sent", self.frame_with_violation)
+                                # cv2.imshow("Violation Sent", self.frame_with_violation)
+                                pass
                             if self.record:
                                 # This will be the command for sending in the before and after footage of the violation
                                 self.recorder.send()
