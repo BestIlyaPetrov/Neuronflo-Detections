@@ -320,6 +320,7 @@ class EnvisionInferenceSystem(InferenceSystem):
                 rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
 
                 data = {
+                    'zone': f"Envision_table_{self.camera_num}",
                     'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
                     'timestamps': timestamp_to_send, # We only need a timestamp
                     'rules_broken': str(rules_broken),
@@ -367,9 +368,12 @@ class FrameProcessing():
         # Will be used to update the detections and
         # returns the relevant detection data 
         # relating to violations detected so far 
-        no_goggles_class = 1
-        solder_class = 2
-        hand_class = 3
+        # no_goggles_class = 1
+        # solder_class = 2
+        # hand_class = 3
+        no_goggles_class = 65
+        solder_class = 66
+        hand_class = 76
         # This will now activate when a person is 
         # holding a knife and phone in the same hand 
         if len(detections) == 0:

@@ -329,7 +329,7 @@ class InferenceSystem:
                             # Display annotated frame with violations highlighted 
                             if self.violation_flag:
                                 # violation_frame = self.annotate_violations()
-                                cv2.imshow("Violation Sent", self.frame_with_violation)
+                                # cv2.imshow("Violation Sent", self.frame_with_violation)
 
                                 # Reset the arrays for the data and the images, since we just sent it to the server
                                 self.detections_array[self.camera_num] = []
