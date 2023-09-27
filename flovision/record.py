@@ -38,7 +38,7 @@ class Recorder():
         # Assuming that the FPS is 15 and we want 5 seconds,
         # the max number of frames we want to collect per 
         # camera will be 75
-        record_time = 3 # In seconds
+        record_time = 5 # In seconds
         fps = 15
         max_frames_saved = record_time * fps
         captured_frames = self.system.captures
