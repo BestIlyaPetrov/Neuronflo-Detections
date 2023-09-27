@@ -304,34 +304,6 @@ class EnvisionInferenceSystem(InferenceSystem):
 
             if len(self.violation_to_server[self.camera_num]):
                 self.system_send(least_blurry_indx=least_blurry_indx)
-                # Define the frame with the least blurry index
-                frame = self.array_for_frames[self.camera_num][least_blurry_indx]
-                
-                # Save the image locally for further model retraining
-                if self.save:
-                    self.save_frames(frame, self.camera_num)
-                
-                # Annotate the violations
-                self.frame_with_violation = self.annotate_violations()
-
-                #  Compliance Logic
-                # img_to_send = frame
-
-                timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
-
-                data = {
-                    'zone': f"Envision_table_{self.camera_num}",
-                    'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
-                    'timestamps': timestamp_to_send, # We only need a timestamp
-                    'rules_broken': str(rules_broken),
-                    'compliant': "False"
-                }
-                
-                link = 'api/violation_update'
-                # send the actual image to the server
-                sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP, link)
-            
             # Empty the list to be sent to the server after sending 
             self.violation_to_server[self.camera_num] = []
     
@@ -353,14 +325,17 @@ class EnvisionInferenceSystem(InferenceSystem):
         rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
 
         data = {
+            'zone': f"Envision_table_{self.camera_num}",
             'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
             'timestamps': timestamp_to_send, # We only need a timestamp
             'rules_broken': str(rules_broken),
             'compliant': "False"
         }
         
+        link = 'api/violation_update'
         # send the actual image to the server
-        sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP)
+        sendImageToServer(self.frame_with_violation, data, self.server_IP, link)
+            
 
     def create_file_path(self, frame):
         # Ensure the home directory path is correct for your system

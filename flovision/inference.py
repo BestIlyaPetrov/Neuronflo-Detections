@@ -129,6 +129,7 @@ class InferenceSystem:
         self.display = display
         self.save = save
         self.annotate_raw = annotate_raw
+        self.annotate_violation = annotate_violation
         self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
 
 
@@ -165,8 +166,7 @@ class InferenceSystem:
         self.item_dirs = [self.save_dir / item for item in detected_items]
         [item_dir.mkdir(parents=True, exist_ok=True) for item_dir in self.item_dirs]
 
-        # Decide if we want to see what will be sent to the server
-        self.violation_flag = annotate_violation
+
 
         # Decides if the last 5 seconds should be stored
         self.record = record
@@ -336,7 +336,7 @@ class InferenceSystem:
                         # After the image is sent to the server
                         if not self.detection_trigger_flag[self.camera_num]:
                             # Display annotated frame with violations highlighted 
-                            if self.violation_flag:
+                            if self.annotate_violation:
                                 # violation_frame = self.annotate_violations()
                                 # cv2.imshow("Violation Sent", self.frame_with_violation)
                                 pass
