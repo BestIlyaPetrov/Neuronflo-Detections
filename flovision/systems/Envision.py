@@ -325,14 +325,14 @@ class EnvisionInferenceSystem(InferenceSystem):
         rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
 
         data = {
+            'event_type': 'violation',
             'zone': f"Envision_table_{self.camera_num}",
             'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
             'timestamps': timestamp_to_send, # We only need a timestamp
             'rules_broken': str(rules_broken),
-            'compliant': "False"
         }
         
-        link = 'api/violation_update'
+        link = 'api/event_update'
         # send the actual image to the server
         sendImageToServer(self.frame_with_violation, data, self.server_IP, link)
             
