@@ -1,4 +1,4 @@
-from inference import InferenceSystem
+# from .inference import InferenceSystem
 import multiprocessing
 import time
 import datetime
@@ -27,7 +27,8 @@ last few seconds worth of frames for that camera.
 '''
 
 class Recorder():
-    def __init__(self, system:InferenceSystem):
+    # def __init__(self, system:InferenceSystem): # Doesn't work due to recursive import - will need to change this
+    def __init__(self, system):
         self.system = system
         self.cam_feeds = [[] for _ in range(len(self.system.cams))]
         self.processes = []
