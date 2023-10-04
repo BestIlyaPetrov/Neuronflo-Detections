@@ -27,7 +27,7 @@ class InferenceSystem:
     """
     General class for inference system
     """
-    # def __init__(self, model_name, video_res, border_thickness, display, save, bboxes, num_devices, model_type='custom', model_directory="./", model_source='local', detected_items=[], server_IP='local', annotate=False) -> None:
+
     def __init__(self, **kwargs) -> None:
         model_name = kwargs.get('model_name')
         video_res = kwargs.get('video_res')
@@ -44,6 +44,7 @@ class InferenceSystem:
         annotate_raw = kwargs.get('annotate_raw', False)
         annotate_violation = kwargs.get('annotate_violation', False)
         debug = kwargs.get('debug', False)
+        self.save_text = kwargs.get('save_text', False)
 
         print("\n\n##################################")
         print("PARAMETERS INSIDE INFERENCE.PY\n")
@@ -103,12 +104,11 @@ class InferenceSystem:
 
         func = create_bounding_boxes if bboxes else load_bounding_boxes
         for i, cam in enumerate(self.cams):
-            coordinates = func(cam)
-            zone_polygons.append(coordinates)
+            coordinates_set = func(cam)
+            for j, coordinates in enumerate(coordinates_set):
+                zone_polygons.append(Zone(i, j, coordinates))
 
-        # TODO: improve zone management
-        # 1. Need several zones per camera
-        # 2. Need to neatly store the coordinates - not just coordinates0.json and coordinates1.json
+        self.zone_polygons = zone_polygons
 
         # Load the model
         self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
@@ -134,10 +134,10 @@ class InferenceSystem:
         colors = sv.ColorPalette.default()
         self.zones = [
             sv.PolygonZone(
-                polygon=polygon,
+                polygon=zone_object.polygon,
                 frame_resolution_wh=self.frame_size
             )
-            for polygon
+            for zone_object
             in zone_polygons
         ]
         self.zone_annotators = [
@@ -166,7 +166,11 @@ class InferenceSystem:
         # Decide if we want to see what will be sent to the server
         self.violation_flag = annotate_violation
         
-        # TODO: add functionality to save text boxes along with the frames
+        # add functionality to save text boxes along with the frames
+        if self.save_text:
+            self.text_dir = Path.cwd().parent / 'saved_text'
+            self.text_dir.mkdir(parents=True, exist_ok=True)
+            self.text_file = open(self.text_dir / 'text.txt', 'w')
 
     def ByteTracker_implementation(self, detections, byteTracker):
         # byteTracker is the sv.ByteTrack() object 
@@ -229,13 +233,13 @@ class InferenceSystem:
         zone_count = 0 # count the number of zones
         self.num_consecutive_frames = 3 # num_consecutive_frames that we want to window (to reduce jitter)
 
-        # List of lists, beacause for each camera feed, we have a list of detections we save to choose the prevalent one as jitter reduction technique (aka goggle, no_goggle, goggle -> goggle )
+        # List of lists, beacause for each zone, we have a list of detections we save to choose the prevalent one as jitter reduction technique (aka goggle, no_goggle, goggle -> goggle )
         self.detections_array = [[] for _ in range(len(self.zones))]
 
-        # List of lists, beacause for each camera feed, we have a list of frames we save to choose the least blurry one
+        # List of lists, beacause for each zone, we have a list of frames we save to choose the least blurry one
         self.array_for_frames = [[] for _ in range(len(self.zones))]
 
-        # Need a trigger flag for each of the camera feeds. Initialized to False
+        # Need a trigger flag for each of the zones. Initialized to False
         self.detection_trigger_flag = [False for _ in range(len(self.zones))]
 
         # Split detections into different sets depending on object, by bounding box (aka [goggles, no_goggles])
@@ -296,8 +300,25 @@ class InferenceSystem:
                     if len(self.detections) > 0:
                         self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
 
-                    # Check # of detections in a zone (We are assuming there's 1 zone per camera - TODO: UPGRADE TO MULTIPLE)
-                    mask = self.zones[self.camera_num].trigger(detections=self.detections) #this changes self.zones.current_count
+                    # Check which zone each detection belongs to
+                    zone_detections = []
+                    for detection in self.detections:
+                        curr_detections = []
+                        # Calculate the center of the bounding box
+                        center_x = (detection.x_min + detection.x_max) / 2
+                        center_y = (detection.y_min + detection.y_max) / 2
+
+                        # Check which zone the center of the bounding box falls into
+                        for idx, zone in enumerate(self.zones):
+                            if zone.contains(center_x, center_y):
+                                curr_detections.append(detection)
+
+                        zone_detections.append(curr_detections)
+                    
+                    masks = [zone.trigger(detections=zone_detections[j]) for j, zone in enumerate(self.zones) if len(zone_detections[j]) > 0]
+
+                    # Take intersection of all the masks
+                    mask = np.all(masks, axis=0)
                     
                     # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate_raw:
@@ -372,7 +393,7 @@ class InferenceSystem:
         """
         Implement the desired annotation method
         """
-        raise NotImplementedError("Trigger action not implemented")
+        raise NotImplementedError("Annotate violations not implemented")
 
     def other_actions(self) -> None:
         """
@@ -381,6 +402,11 @@ class InferenceSystem:
         pass
 
 
+class Zone():
+    def __init__(self, camera_id, zone_id, polygon) -> None:
+        self.camera_id = camera_id
+        self.zone_id = zone_id
+        self.polygon = polygon
 
 class Violation():
     # A class that holds everything needed to hold information
@@ -395,6 +421,7 @@ class Violation():
         self.timestamps.append(timestamp)
         self.violation_codes = []
         self.violation_codes.append(violation_code)
+        self.zone = None # Will be set to the zone object that the violation occured in.
     
     def Check_Code(self, violation_code, class_id) -> bool:
         # Will check if the there's already an existing violation
