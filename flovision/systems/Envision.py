@@ -21,17 +21,17 @@ from ..face_id import face_recog
 from ..inference import InferenceSystem, Violation
 from ..notifications import teleBot
 
-from collections import Counter
-from math import floor
+from collections import Counter, defaultdict
+from math import floor, ceil
 import os
 
 
 """
 Model detects the following classes
 0-goggles
-1-no_goggles
-2-soldering
-3-hand
+1-hands
+2-no_goggles
+3-soldering_iron
 
 COCO dataset
 0 - person
@@ -123,16 +123,29 @@ class EnvisionInferenceSystem(InferenceSystem):
         centerY = round(minY + (maxY - minY)/2)
         return centerX, centerY
         
-    def repeat_ids(self,list_of_track_ids):
-        # Flatten the list
-        flat_list = [item for sublist in list_of_track_ids for item in sublist]
-        flat_list = [tuple(x) for x in flat_list]
 
-        # Count occurrences
-        count = Counter(flat_list)
+    def repeat_ids(self, list_of_track_ids):
+        if self.debug:
+            print(f'list_of_track_ids = {list_of_track_ids}')
+        id_counts = defaultdict(int)    # Dictionary to store occurrences of each ID
+        frame_counts = defaultdict(set) # Dictionary to store which frames the ID appeared in
         
-        # Get numbers that appear at least floor(len(a)/2) times
-        return [num for num, freq in count.items() if freq >= floor(len(list_of_track_ids)/2)]
+        # Iterate over the list_of_track_ids and the IDs in each frame
+        for frame_num, frame in enumerate(list_of_track_ids):
+            for id_ in frame:
+                id_counts[id_] += 1
+                frame_counts[id_].add(frame_num)
+        if self.debug:
+            print(f'id_counts = {id_counts}')
+            print(f'frame_counts = {frame_counts}')
+        
+        # Filter out IDs that appear in at least 2 list_of_track_ids
+        reappearing_detections = [id_ for id_, list_of_track_ids in frame_counts.items() if len(list_of_track_ids) >= 2]
+        if self.debug:
+            print(f'reappearing_detections = {reappearing_detections}')
+
+        return reappearing_detections
+
 
     def trigger_event(self) -> bool:
         # Will change the self.detection_trigger_flag to True
@@ -180,21 +193,22 @@ class EnvisionInferenceSystem(InferenceSystem):
 
             # Solder annotation info-variables
             solder_idx = violation[1]
+            if self.debug:
+                print(f"solder_idx is {solder_idx}")
+                print(f"detections.xyxy is {detections.xyxy}")
             solder_Xmin, solder_Ymin, solder_Xmax, solder_Ymax = detections.xyxy[solder_idx]
             solder_position = (int(solder_Xmin), int(solder_Ymin))
             solder_position2 = (int(solder_Xmax), int(solder_Ymax))
-            #print(f"person_position = {person_position}")
-            #print(f"solder_position = {solder_position}")
 
             # Add text annotations to the frame
             solder_annotation = f"{soldering_text}"
             person_annotation = f"{person_text}"
 
             # Frame manipulation
-                # Soldering Irons
+            # Soldering Irons
             frame = cv2.putText(frame, solder_annotation, solder_position, font, font_scale, font_color, line_thickness)
             frame = cv2.rectangle(frame, solder_position, solder_position2, font_color, line_thickness)
-                # People With No Goggles
+            # People With No Goggles
             frame = cv2.putText(frame, person_annotation, person_position, font, font_scale, font_color, line_thickness)
             frame = cv2.rectangle(frame, person_position, person_position2, font_color, line_thickness)
         return frame
@@ -207,22 +221,31 @@ class EnvisionInferenceSystem(InferenceSystem):
 
         # Append detections from self.camera_num source to the array for detection jitter reduction
         self.detections_array[self.camera_num].append(self.detections)
+        # print(f'detections_array[{self.camera_num}] is {self.detections_array[self.camera_num]}')
 
         if self.consecutive_frames_cnt[self.camera_num] > 1: #if cnt==1, we just saved the self.violations in the trigger_event(), no need to do it again
             self.violations = self.FrameProcessor.NewDetections(detections=self.detections)
 
         # Append violations found in the detections above
         self.violations_array[self.camera_num].append(self.violations)
+        # print(f'violations_array[{self.camera_num}] is {self.violations_array[self.camera_num]}')
 
         # Append an image from self.camera_num source to the array for least blurry choice
+        # if self.annotate_raw:
+        #     frame_to_append = self.box_annotator.annotate(scene=self.captures[self.camera_num], detections=self.detections)
+        # else:
+        #     frame_to_append = self.captures[self.camera_num]
+
+        # self.array_for_frames[self.camera_num].append(frame_to_append)
+
         self.array_for_frames[self.camera_num].append(self.captures[self.camera_num])
+
 
         # After N consecutive frames collected, check what was the most common detection for each object
         corrected_violations = []
         least_blurry_indx = None
 
         if  self.consecutive_frames_cnt[self.camera_num] >= self.num_consecutive_frames:
-            #print("START HERE")
             # Reset the consecutive frames count
             self.consecutive_frames_cnt[self.camera_num] = 0
 
@@ -232,17 +255,33 @@ class EnvisionInferenceSystem(InferenceSystem):
             # for each frame check Detection.tracker_id[violation[0]], where violation[0] is the human's tracker_id
             # maybe lets's first create a list of all track ids in violation 
 
-            for violations, detection in zip(self.violations_array[self.camera_num], self.detections_array[self.camera_num]):
+            # Question for Sialoi - why is this zipped??
+            for violations in self.violations_array[self.camera_num]:
                 # violation[-1] <- person's track_id 
+                if self.debug:
+                    print(f'(line 275) Violations: {violations}')
+
+                # Sample contents:
+                # (line 255) Violations: [[0, 2, 1, 0, 5], [0, 3, 1, 0, 5]], where:
+                # [0, 2, 1, 0, 5] is [no_goggles_index, solder_index, camera_num, violation_code, track_id], where
+                # track_id is the track_id of violating no_goggles in that frame
+
                 track_ids =[]
                 for violation in violations:
                     track_ids.append(violation[-1])
 
+                if self.debug:
+                    print(f'(line 260) track_ids: {track_ids}')
+
                 self.violations_track_ids_array[self.camera_num].append(track_ids)
+                if self.debug:
+                    print(f'(line 262) self.violations_track_ids_array[{self.camera_num}] = {self.violations_track_ids_array[self.camera_num]} ')
         
             # Now figure out which track_ids repeat from frame to frame 
-            # The threshold is that each track_id must happen more than floor(N/2) times
-            violating_ids_list = self.repeat_ids(self.violations_track_ids_array)
+            # The threshold is that each track_id must happen more than ceil(N/2) times
+            violating_ids_list = self.repeat_ids(self.violations_track_ids_array[self.camera_num])
+            # Clear the violating track ids for next time
+            self.violations_track_ids_array[self.camera_num] = []
             
             # Finds the least blurry image's index
             least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
@@ -250,8 +289,19 @@ class EnvisionInferenceSystem(InferenceSystem):
             # This records the union of track_ids of the least blurry image and which 
             # ids are followed in multiple frames 
             for violation in self.violations_array[self.camera_num][least_blurry_indx]:
+                if self.debug:
+                    print(f"VIOLATION IS:{violation}")
+                    print(f"VIOLATION[-1] IS (which equals to track_id):{violation[-1]}")
+                    print(f"violating_ids_list IS:{violating_ids_list}")
                 if violation[-1] in violating_ids_list:
+                # if any(violation[-1] in v_tuple for v_tuple in violating_ids_list): #change thsi back once repeat_ids is fixed
                     corrected_violations.append(violation)
+
+            # Now that we found the violations that stay consistent across multiple frames, can clear the violations array
+            self.violations_array[self.camera_num] = []
+            if self.debug:
+                print(f'CLEARED VIOLATIONS_ARRAY[{self.camera_num}], THE NEW CONTENTS ARE {self.violations_array[self.camera_num]}')
+
         #print(f"corrected_violations: {corrected_violations}")
         # Skip if there are no violations
         if len(corrected_violations):
@@ -372,9 +422,9 @@ class FrameProcessing():
         # Will be used to update the detections and
         # returns the relevant detection data 
         # relating to violations detected so far 
-        no_goggles_class = 1
-        solder_class = 2
-        hand_class = 3
+        no_goggles_class = 2 
+        solder_class = 3
+        hand_class = 1
         # no_goggles_class = 65
         # solder_class = 66
         # hand_class = 76
@@ -412,7 +462,7 @@ class FrameProcessing():
         # The purpose of this function is to edit the 
         # soldering label list to only have soldering
         # irons that are being hand held. 
-        threshold = 0.5
+        threshold = 0.9
         condition = []
         for solder_index in self.solder_labels:
             # Iterate through each soldering iron and look
@@ -436,6 +486,8 @@ class FrameProcessing():
                     condition.append(True)
                 else:
                     condition.append(False)
+
+        # Keep only those solder labels that were detected to be held in hand - to be used in detection_rule()
         self.solder_labels = [label_index for label_index, cond in zip(self.solder_labels, condition) if cond]
         #print(self.solder_labels)
         #print(bool(len(self.solder_labels)))
@@ -445,23 +497,29 @@ class FrameProcessing():
         # This method will evaluate the detections found
         # in the frame if they're valid violations 
 
-        threshold = 0.5
+        threshold = 0.9
         frame_violations = []
         violation_code = 0
         camera_num = self.system.camera_num
+
+        # Go thorugh the filtered solder_iron detections (one that were detected in hand)
         for solder_index in self.solder_labels:
             minX, minY, maxX, maxY = self.detections.xyxy[solder_index]
             centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+            # For each soldering iron, check if no_goggles is nearby
             for no_goggles_index in self.no_goggles:
                 minX, minY, maxX, maxY = self.detections.xyxy[no_goggles_index]
                 centerX2, centerY2 = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
                 distX = float(abs(centerX - centerX2))/float(self.system.frame_width)
                 distY = float(abs(centerY - centerY2))/float(self.system.frame_height)
                 #print(f"distX: {distX} \ndistY: {distY}")
-                if distX < threshold and distY < threshold:
 
-                    track_id = self.detections.tracker_id[no_goggles_index]
+                # If the soldering iron in hand is close to no_goggles detection, save a violation
+                if distX < threshold and distY < threshold:
+                    track_id = self.detections.tracker_id[no_goggles_index] # track id of the no_goggles in violation
+                    # This is the format for the contents of violations_array
                     violation = [no_goggles_index, solder_index, camera_num, violation_code, track_id]
                     frame_violations.append(violation)
+
         return frame_violations
 

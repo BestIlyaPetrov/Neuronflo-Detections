@@ -283,7 +283,7 @@ class InferenceSystem:
                     predictions = results.xyxy[0].cpu().numpy()
 
                     # Define the confidence threshold
-                    conf_thresh = 0.3
+                    conf_thresh = 0.4
 
                     # Filter out predictions with a confidence score below the threshold
                     filtered_predictions = predictions[predictions[:, 4] > conf_thresh]
@@ -328,6 +328,7 @@ class InferenceSystem:
                             print()
                             print("TRIGGER EVENT - THESE WERE THE DETECTIONS:")
                             print(results)
+                            print(results_dict)
                             # print("RESULTS JSON: ", results_json)
                             print()
 
@@ -347,6 +348,8 @@ class InferenceSystem:
                             # Reset the arrays for the data and the images, since we just sent it to the server
                             self.detections_array[self.camera_num] = []
                             self.array_for_frames[self.camera_num] = []
+                            if self.debug:
+                                print("CLEARED MAIN ARRAYS")
 
 
                     self.other_actions()
