@@ -240,13 +240,13 @@ class InferenceSystem:
         self.num_consecutive_frames = 3 # num_consecutive_frames that we want to window (to reduce jitter)
 
         # List of lists, beacause for each zone, we have a list of detections we save to choose the prevalent one as jitter reduction technique (aka goggle, no_goggle, goggle -> goggle )
-        self.detections_array = [[] for _ in range(len(self.zones))]
+        self.detections_array = [[] for _ in range(len(self.cams))]
 
         # List of lists, beacause for each zone, we have a list of frames we save to choose the least blurry one
-        self.array_for_frames = [[] for _ in range(len(self.zones))]
+        self.array_for_frames = [[] for _ in range(len(self.cams))]
 
         # Need a trigger flag for each of the zones. Initialized to False
-        self.detection_trigger_flag = [False for _ in range(len(self.zones))]
+        self.detection_trigger_flag = [False for _ in range(len(self.cams))]
 
         # Split detections into different sets depending on object, by bounding box (aka [goggles, no_goggles])
         self.present_indices = [2* idx for idx in range(len(self.items))]
