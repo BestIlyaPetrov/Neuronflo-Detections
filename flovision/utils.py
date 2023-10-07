@@ -5,7 +5,7 @@ import socket
 from zeroconf import ServiceBrowser, Zeroconf
 
 import cv2
-import face_recognition
+import face_recognition # Causes problems on Windows
 
 class IPListener:
     def __init__(self, target_service_name):
@@ -73,6 +73,15 @@ def get_highest_index(folder_path):
 def list_files_recursively(directory):
     # Creates a list of dictionaries that will hold the pathways for each
     # person's picture to be used for face encoding
+    """
+    Directory
+        Person_1_Folder
+            Picture_of_Person_1
+        Person_2_Folder
+            Picture_of_Person_2
+        Person_3_Folder
+            Picture_of_Person_3
+    """
     
     files_and_dirs = os.listdir(directory)
     persons_dictionary = []

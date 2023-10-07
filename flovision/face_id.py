@@ -1,7 +1,7 @@
-import face_recognition
+import face_recognition # Causes problems on Windows
 import cv2
 import numpy as np
-from utils import *
+from .utils import *
 
 """
 This file helps guide how to use the face_recog

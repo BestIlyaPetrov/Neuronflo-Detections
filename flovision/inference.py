@@ -20,6 +20,7 @@ from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
 from .face_id import face_recog
+from .record import Recorder
 
 import os
 
@@ -45,6 +46,7 @@ class InferenceSystem:
         annotate_violation = kwargs.get('annotate_violation', False)
         debug = kwargs.get('debug', False)
         self.save_text = kwargs.get('save_text', False)
+        record = kwargs.get('record', False)
 
         print("\n\n##################################")
         print("PARAMETERS INSIDE INFERENCE.PY\n")
@@ -127,6 +129,7 @@ class InferenceSystem:
         self.display = display
         self.save = save
         self.annotate_raw = annotate_raw
+        self.annotate_violation = annotate_violation
         self.consecutive_frames_cnt = [0 for i in range(len(self.cams))]
 
 
@@ -163,8 +166,11 @@ class InferenceSystem:
         self.item_dirs = [self.save_dir / item for item in detected_items]
         [item_dir.mkdir(parents=True, exist_ok=True) for item_dir in self.item_dirs]
 
-        # Decide if we want to see what will be sent to the server
-        self.violation_flag = annotate_violation
+
+
+        # Decides if the last 5 seconds should be stored
+        self.record = record
+        self.recorder = Recorder(system=self)
         
         # add functionality to save text boxes along with the frames
         if self.save_text:
@@ -266,7 +272,10 @@ class InferenceSystem:
                     continue
 
                 ##### Iterating over frames saved from each of the connected cameras #####
-                
+                # If record flag raised, store frames 
+                if self.record:
+                    self.recorder.store()
+
                 self.camera_num = 0 # the index of the vide stream being processed
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
@@ -278,7 +287,7 @@ class InferenceSystem:
                     predictions = results.xyxy[0].cpu().numpy()
 
                     # Define the confidence threshold
-                    conf_thresh = 0.3
+                    conf_thresh = 0.4
 
                     # Filter out predictions with a confidence score below the threshold
                     filtered_predictions = predictions[predictions[:, 4] > conf_thresh]
@@ -340,6 +349,7 @@ class InferenceSystem:
                             print()
                             print("TRIGGER EVENT - THESE WERE THE DETECTIONS:")
                             print(results)
+                            print(results_dict)
                             # print("RESULTS JSON: ", results_json)
                             print()
 
@@ -348,13 +358,20 @@ class InferenceSystem:
                         # After the image is sent to the server
                         if not self.detection_trigger_flag[self.camera_num]:
                             # Display annotated frame with violations highlighted 
-                            if self.violation_flag:
+                            if self.annotate_violation:
                                 # violation_frame = self.annotate_violations()
-                                cv2.imshow("Violation Sent", self.frame_with_violation)
+                                # cv2.imshow("Violation Sent", self.frame_with_violation)
+                                pass
+                            if self.record:
+                                # This will be the command for sending in the before and after footage of the violation
+                                self.recorder.send()
 
-                                # Reset the arrays for the data and the images, since we just sent it to the server
-                                self.detections_array[self.camera_num] = []
-                                self.array_for_frames[self.camera_num] = []
+                            # Reset the arrays for the data and the images, since we just sent it to the server
+                            self.detections_array[self.camera_num] = []
+                            self.array_for_frames[self.camera_num] = []
+                            if self.debug:
+                                print("CLEARED MAIN ARRAYS")
+
 
                     self.other_actions()
                 

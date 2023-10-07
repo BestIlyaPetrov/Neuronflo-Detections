@@ -85,6 +85,22 @@ class TennecoInferenceSystem(InferenceSystem):
         self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
         self.violation_to_server = [[] for _ in range(len(self.cams))]
+        self.tracker_id_side_entered = [{} for _ in range(len(self.cams))]
+    
+    def findCenter(self, minX, minY, maxX, maxY):
+        # Will find the center of a detection when given the 
+        # min and max for the X and Y coordinates. 
+        centerX = round(minX + (maxX - minX)/2)
+        centerY = round(minY + (maxY - minY)/2)
+        return centerX, centerY
+
+    def tracker_id_side_entered_update(self) -> None:
+        # List comprehension to dump old track ids
+        # Will dump a track id if it's older than 1 min
+        # key = tracker_id
+        # value = ["L or R", datetime_obj] 
+        if self.tracker_id_side_entered[self.camera_num]:
+            self.tracker_id_side_entered[self.camera_num] = {key:value for key, value in self.tracker_id_side_entered[self.camera_num].items() if (datetime.datetime.now() - value[1]) < datetime.timedelta(minutes=1)}
 
     def Update_Dictionary(self) -> None:
         # Will update the violation_dictionary to contain the
@@ -122,10 +138,8 @@ class TennecoInferenceSystem(InferenceSystem):
 
     def annotate_violations(self) -> list:
         """
-        NOT DONE
+        NOT TESTED
         """
-
-
         # Use this function to annotate the frame's
         # valid violations.   
         violations = self.violation_to_server[self.camera_num]
@@ -135,48 +149,44 @@ class TennecoInferenceSystem(InferenceSystem):
         # violation = [person_index, soldering_iron_index, camera_index, violation_code, track_id]
         # violations = [violation, violation, ...]
         person_text = 'No Goggles'
-        soldering_text = 'Active Soldering Iron'
+        shoes_text = 'Wrong Shoes'
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 1
-        font_color = (0, 0, 255)  # Red color in BGR format
+        font_scale = 0.5
+        font_color = (255, 255, 255)  # Red color in BGR format
+        box_color = (0, 0, 255)
         line_thickness = 2
+        font_thickness = 2
+
+        # violations = [[class_id, detection_index, detection_track_id],
+        #               [class_id, detection_index, detection_track_id], ...]
+
         for violation in violations:
             # Each iteration will text annotate a full violation
             # onto the frame. Each annotation will have a [int] 
             # at the end of the text annotation from the frame.
             # This is to indicate which detection is with which
             # that caused a violation 
+            class_id = violation[0]
+            detection_idx = violation[1]
+            Xmin, Ymin, Xmax, Ymax = detections.xyxy[detection_idx]
+            positions = [(int(Xmin), int(Ymin)), (int(Xmax), int(Ymax))]
+            text_position = (int(Xmin), int(Ymin)-5)
+            annotation_text = person_text if class_id == 1 else shoes_text
+            # For the text background
+            # Finds space required by the text so that we can put a background with that amount of width.
+            (w, h), _ = cv2.getTextSize(annotation_text, font, font_scale, font_thickness)
+            # Text background
+            frame = cv2.rectangle(frame, (Xmin, Ymin - 20), (Xmin + w, Ymin), box_color, -1)
+            # Label text
+            frame = cv2.putText(frame, annotation_text, text_position, font, font_scale, font_color, font_thickness)
+            # Bounding box
+            frame = cv2.rectangle(frame, positions[0], positions[1], box_color, line_thickness)
 
-            # Person annotation info-variables
-            person_idx = violation[0]
-            person_Xmin, person_Ymin, person_Xmax, person_Ymax = detections.xyxy[person_idx]
-            person_position = (int(person_Xmin), int(person_Ymin))
-            person_position2 = (int(person_Xmax), int(person_Ymax))
-
-            # Solder annotation info-variables
-            solder_idx = violation[1]
-            solder_Xmin, solder_Ymin, solder_Xmax, solder_Ymax = detections.xyxy[solder_idx]
-            solder_position = (int(solder_Xmin), int(solder_Ymin))
-            solder_position2 = (int(solder_Xmax), int(solder_Ymax))
-            #print(f"person_position = {person_position}")
-            #print(f"solder_position = {solder_position}")
-
-            # Add text annotations to the frame
-            solder_annotation = f"{soldering_text}"
-            person_annotation = f"{person_text}"
-
-            # Frame manipulation
-                # Soldering Irons
-            frame = cv2.putText(frame, solder_annotation, solder_position, font, font_scale, font_color, line_thickness)
-            frame = cv2.rectangle(frame, solder_position, solder_position2, font_color, line_thickness)
-                # People With No Goggles
-            frame = cv2.putText(frame, person_annotation, person_position, font, font_scale, font_color, line_thickness)
-            frame = cv2.rectangle(frame, person_position, person_position2, font_color, line_thickness)
         return frame
 
     def trigger_action(self) -> None:
         """
-        NOT DONE
+        NOT TESTED
         """
 
         """
@@ -234,9 +244,11 @@ class TennecoInferenceSystem(InferenceSystem):
             # This records the union of track_ids of the least blurry image and which 
             # ids are followed in multiple frames 
             for violation in self.violations_array[self.camera_num][least_blurry_indx]:
+                # For this code to work, remote that the the last index of violation must
+                # be the tracker id of that set of detections
                 if violation[-1] in violating_ids_list:
                     corrected_violations.append(violation)
-        #print(f"corrected_violations: {corrected_violations}")
+
         # Skip if there are no violations
         if len(corrected_violations):
             # Pick the least blurry image to send to the server
@@ -259,9 +271,13 @@ class TennecoInferenceSystem(InferenceSystem):
             for violation in new_violations:
                 # If not then add new violation object to the dictionary
                 camera_id = self.camera_num
-                class_id = 3
+                class_id = violation[0]
                 timestamp = datetime.datetime.now()
-                violation_code = 0
+                violation_code = 0 if class_id == 1 else 1 
+                # Meaning that if there's no goggles detected 
+                # the violation code will be 0 and if no boots
+                # are detected then the code will be 1.
+ 
                 track_id = violation[-1] # self.detections.tracker_id[violation[0]]
                 # Creates a violation object to be stored in the 
                 self.violation_dictionary[self.camera_num][track_id] = Violation(camera_id=camera_id, class_id=class_id, timestamp=timestamp, violation_code=violation_code)
@@ -272,8 +288,8 @@ class TennecoInferenceSystem(InferenceSystem):
             for violation in old_violations:
                 # Check if violation object has record of the same violation 
                 # in the last 10 minutes 
-                class_id = 3  
-                violation_code = 0
+                class_id = violation[0]
+                violation_code = 0 if class_id == 1 else 1 
                 violation_object = self.violation_dictionary[self.camera_num][violation[-1]]
                 if violation_object.Check_Code(violation_code, class_id):
                     # If true, violation already exists and is not valid
@@ -287,34 +303,37 @@ class TennecoInferenceSystem(InferenceSystem):
                     violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
 
             if len(self.violation_to_server[self.camera_num]):
-                # Define the frame with the least blurry index
-                frame = self.array_for_frames[self.camera_num][least_blurry_indx]
-                
-                # Save the image locally for further model retraining
-                if self.save:
-                    self.save_frames(frame, self.camera_num)
-                
-                # Annotate the violations
-                self.frame_with_violation = self.annotate_violations()
-
-                #  Compliance Logic
-                # img_to_send = frame
-
-                timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                rules_broken = ["Too close to active soldering iron." for violation in self.violation_to_server[self.camera_num] if violation[-2] == 0]
-
-                data = {
-                    'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
-                    'timestamps': timestamp_to_send, # We only need a timestamp
-                    'rules_broken': str(rules_broken),
-                    'compliant': "False"
-                }
-                
-                # send the actual image to the server
-                sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP)
+                self.system_send(least_blurry_indx=least_blurry_indx)
             
             # Empty the list to be sent to the server after sending 
             self.violation_to_server[self.camera_num] = []
+
+    def system_send(self, least_blurry_indx):
+        # Define the frame with the least blurry index
+        frame = self.array_for_frames[self.camera_num][least_blurry_indx]
+
+        # Save the image locally for further model retraining
+        if self.save:
+            self.save_frames(frame, self.camera_num)
+
+        # Annotate the violations
+        self.frame_with_violation = self.annotate_violations()
+
+        #  Compliance Logic
+        # img_to_send = frame
+
+        timestamp_to_send = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        rules_broken = ["No goggles were detected." if self.camera_num == 0 else "Wrong shoes detected."]
+
+        data = {
+            'num_of_violators': str(len(self.violation_to_server[self.camera_num])),
+            'timestamps': timestamp_to_send, # We only need a timestamp
+            'rules_broken': str(rules_broken),
+            'compliant': "False"
+        }
+
+        # send the actual image to the server
+        sendImageToServer(self.frame_with_violation, data, IP_address=self.server_IP)
 
     def create_file_path(self, frame):
         # Ensure the home directory path is correct for your system
@@ -382,17 +401,51 @@ class FrameProcessing():
         violations = []
         no_goggles_class = 1
         no_boots_class = 3
+        self.system.tracker_id_side_entered_update()
         # Add the index, class, and track ID to the list of violations
-        for no_goggle_index in self.no_goggles_index:
-            track_id = self.detections.tracker_id[no_goggle_index]
-            violation = [no_goggles_class, no_goggle_index, track_id]
-            violations.append(violation)
-        
-        for no_boots_index in self.no_boots_index:
-            track_id = self.detections.tracker_id[no_boots_index]
-            violation = [no_boots_class, no_boots_index, track_id]
-            violations.append(violation)
-        
-        return violations
-        
+        if self.system.camera_num == 0:
+            for no_goggle_index in self.no_goggles_index:
+                track_id = self.detections.tracker_id[no_goggle_index]
+                violation = [no_goggles_class, no_goggle_index, track_id]
 
+                # If track id is not in the system yet, place it in 
+                if track_id not in self.system.tracker_id_side_entered[self.system.camera_num]:
+                    minX, minY, maxX, maxY = self.detections.xyxy[no_goggle_index]
+                    centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+                    if float(centerX)/float(self.system.frame_width) < 0.5:
+                        self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["L", datetime.datetime.now()]
+                    else:
+                        self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["R", datetime.datetime.now()]
+                    
+                # If the tracker_id already exists and showed that the detection entered from a side 
+                # that indicated someone leaving the facility, then the violation will be skipped 
+                if self.system.tracker_id_side_entered[self.system.camera_num][track_id] != None:
+                    if self.system.tracker_id_side_entered[self.system.camera_num][track_id][0] == 'L':
+                        continue
+                
+                violations.append(violation)
+        else:
+            for no_boots_index in self.no_boots_index:
+                track_id = self.detections.tracker_id[no_boots_index]
+                violation = [no_boots_class, no_boots_index, track_id]
+                
+                # If track id is not in the system yet, place it in 
+                if track_id not in self.system.tracker_id_side_entered[self.system.camera_num]:
+                    minX, minY, maxX, maxY = self.detections.xyxy[no_boots_index]
+                    centerX, centerY = self.system.findCenter(minX=minX, minY=minY, maxX=maxX, maxY=maxY)
+                    if float(centerX)/float(self.system.frame_width) < 0.5:
+                        self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["L", datetime.datetime.now()]
+                    else:
+                        self.system.tracker_id_side_entered[self.system.camera_num][track_id] = ["R", datetime.datetime.now()]
+                # a = [{1:["L", datetime_obj]}, {}, {}]
+                # If the tracker_id already exists and showed that the detection entered from a side 
+                # that indicated someone leaving the facility, then the violation will be skipped 
+                if self.system.tracker_id_side_entered[self.system.camera_num][track_id] != None:
+                    if self.system.tracker_id_side_entered[self.system.camera_num][track_id][0] == 'L':
+                        continue
+                
+                violations.append(violation)
+
+        # Now a violation will only occur if there's someone with the wrong shoes or 
+        # wearing no goggles detected  
+        return violations

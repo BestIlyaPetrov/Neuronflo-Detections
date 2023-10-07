@@ -112,7 +112,6 @@ class vStream:
         self.new_frame_available = False
         self.frame = None
         self.frame_processed = None
-        
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon=True
         self.thread.start()

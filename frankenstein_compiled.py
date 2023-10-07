@@ -34,7 +34,8 @@ def main(
     server_IP = 'local',
     annotate_raw = False,
     annotate_violation = True,
-    debug = False
+    debug = False,
+    record = False
     ):
 
     print_parameters()
@@ -78,7 +79,8 @@ def main(
             server_IP = server_IP,
             annotate_raw = annotate_raw,
             annotate_violation = annotate_violation,
-            debug=debug
+            debug=debug,
+            record=record
             )
         """
         #Run the model
@@ -99,6 +101,7 @@ def parse_options():
     parser.add_argument('--annotate-raw', action='store_true', help='return images with detection boxes')
     parser.add_argument('--annotate-violation', action='store_true', help='annotate the violation')
     parser.add_argument('--debug', action='store_true', help='verbose mode')
+    parser.add_argument('--record', action='store_true', help='records the last 5 seconds')
 
 
     options = parser.parse_args()
