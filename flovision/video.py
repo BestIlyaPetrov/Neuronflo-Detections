@@ -8,7 +8,7 @@ import glob
 
 
 
-def adjust_brightness(img):
+def adjust_color(img):
 
     # Convert to YUV color space
     yuv = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
@@ -26,23 +26,29 @@ def adjust_brightness(img):
 def get_device_indices(quantity = 1):
     # Determine the two sources to use for cameras:
     # Find all available video devices
-    devices = glob.glob('/dev/video*')
-    # Sort the device names in ascending order
-    devices.sort()
-    # Use the first device as the capture index
-    # cap_index = [0,1] #default values aka /dev/video0 and /dev/video1
-    # If there are no devices available, raise an error
-    if not devices:
-        raise ValueError('No video devices found')
-    elif len(devices) < quantity:
-        raise ValueError(f'Not enough cameras connected. Only found {len(devices)}, but need {quantity}')
-    # Otherwise, use the lowest available indexes
-    else:
-        cap_index = []
-        #Creating an array of camera device indices. Aka if we find /dev/video0 and /dev/video2, cap_index == [0,2]
-        for i in range(0, quantity):
-            cap_index.append(int(devices[i][-1]))
-        return cap_index
+    # devices = glob.glob('/dev/video*')
+    devices = []
+    ip = "192.168.1.132"
+    port = 554
+    devices.append(f'rtsp://{ip}:{port}/stream2')
+    devices.append(f'rtsp://{ip}:{port}/stream2')
+    return devices
+    # # Sort the device names in ascending order
+    # devices.sort()
+    # # Use the first device as the capture index
+    # # cap_index = [0,1] #default values aka /dev/video0 and /dev/video1
+    # # If there are no devices available, raise an error
+    # if not devices:
+    #     raise ValueError('No video devices found')
+    # elif len(devices) < quantity:
+    #     raise ValueError(f'Not enough cameras connected. Only found {len(devices)}, but need {quantity}')
+    # # Otherwise, use the lowest available indexes
+    # else:
+    #     cap_index = []
+    #     #Creating an array of camera device indices. Aka if we find /dev/video0 and /dev/video2, cap_index == [0,2]
+    #     for i in range(0, quantity):
+    #         cap_index.append(int(devices[i][-1]))
+    #     return cap_index
 
 def draw_border(frame, compliant, border_width=5):
     """
@@ -100,15 +106,16 @@ def least_blurry_image_indx(frame_list):
 
 
 class vStream:
-    def __init__(self, src, resolution):
+    def __init__(self, src, cam_num, resolution):
+        print("Openning camera at link: ", src)
         self.width = resolution[0]
         self.height = resolution[1]
         
         self.capture=cv2.VideoCapture(src)
-        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        # self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        # self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         # success = self.capture.set(cv2.CAP_PROP_FPS, 30.0)
-        self.src = src
+        self.src = cam_num
         self.new_frame_available = False
         self.frame = None
         self.frame_processed = None
@@ -126,17 +133,16 @@ class vStream:
             ## Resizing to set dimensions
             # frame2 = cv2.resize(self.frame, (self.width, self.height))
             # frame_rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
-            self.frame_processed = adjust_brightness(self.frame)
             self.new_frame_available = True
 
 
 
     def getFrame(self):
-        if self.frame_processed is None:
-            return (False, self.frame_processed)
+        if self.frame is None:
+            return (False, self.frame)
         if self.new_frame_available:
             self.new_frame_available = False
-            return (True, self.frame_processed)
+            return (True, self.frame)
         else:
-            return (False, self.frame_processed)
+            return (False, self.frame)
 

@@ -46,7 +46,7 @@ def main(
         inference_obj= Tenneco.TennecoInferenceSystem(
             model_name = weights,
             video_res = video_res,
-            border_thickness = border_thickness,
+            # border_thickness = border_thickness, # we are not drawing borders anymore
             display = display_video,
             save = save_frames,
             bboxes = new_boxes,
@@ -54,15 +54,16 @@ def main(
             model_type="custom",
             model_directory="./",
             model_source="local",
-            detected_items=["goggles","no_goggles","laser_on","laser_off"],
+            detected_items=["goggles","no_goggles","boots","no_boots"], #this is nbot currently being used
             server_IP = server_IP,
             annotate_raw = annotate_raw,
             annotate_violation = annotate_violation,
-            debug=debug
+            debug=debug,
         )
+        inference_obj.run(iou_thres=iou_thres, agnostic_nms=agnostic_nms)
 
         # inference_obj = inference.EntranceInferenceSystem(
-        print("Model name is:",weights)
+        print("Model name is:", weights)
         """
         inference_obj = Envision.EnvisionInferenceSystem(
             model_name = weights, 

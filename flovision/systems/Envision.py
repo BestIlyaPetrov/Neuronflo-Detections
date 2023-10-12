@@ -13,7 +13,7 @@ import collections
 from pathlib import Path
 
 from ..bbox_gui import create_bounding_boxes, load_bounding_boxes
-from ..video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices
+from ..video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices, adjust_color
 from ..comms import sendImageToServer
 from ..utils import get_highest_index, findLocalServer
 from ..jetson import Jetson
@@ -85,6 +85,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
         self.violation_to_server = [[] for _ in range(len(self.cams))]
+
         # API_token = '6323749554:AAEAA_qF1dDE-UWlTr9nxlqlj_pmZbNOqSY'
         # self.telegram_bot = teleBot(API_TOKEN=API_token, name='UCSD Envision Inference')
         '''
@@ -115,6 +116,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         # that's over 10 minutes old, that violation will 
         # be deleted from the dictionary.  
         self.violation_dictionary[self.camera_num] = {key: value for key, value in self.violation_dictionary[self.camera_num].items() if len(value)}
+
 
     def findCenter(self, minX, minY, maxX, maxY):
         # Will find the center of a detection when given the 
@@ -396,21 +398,7 @@ class EnvisionInferenceSystem(InferenceSystem):
         cv2.imwrite(file_path, frame)
 
         return file_path
-    
-    def Telegram_Notification_Implementation(self, frame) -> None:
-        # Telegram Bot Integration
-        # First we create the file path for the frame
-        file_path = self.create_file_path(frame=frame)
-        # Second we send the image to the group chat. Status is used for debugging purposes 
-        status = self.telegram_bot.teleImage(file_path=file_path) 
-        if len(self.violation_to_server[self.camera_num]) > 1:
-            message = f"We have found {len(self.violation_to_server[self.camera_num])} violations!"
-        else:
-            message = f"We have found {len(self.violation_to_server[self.camera_num])} violation!"
-        # Third we send the message describing how many violations were found in the frame sent
-        self.telegram_bot.teleMessage(message=message) 
-        # Lastly we delete the saved frame from that file pathway
-        os.remove(file_path)
+
 
 class FrameProcessing():
     # A class for processing detections found in a frame  

@@ -81,11 +81,19 @@ def sendImageToServer(image, image_data, IP_address, link):
         print(image_data)
         print("########### END OF DETECTION #############")
         print()
+        print()
+        print("########### DETECTION DESERIALIZED #############")
+        flat_image_data = flatten_dict(image_data)
+        print(flat_image_data)
+        print("########### END OFDESERIALIZED DETECTION #############")
+        print()
+
+        
 
     else:
         raise ValueError("Could not encode the frame as a JPEG image")
 
-    response = requests.post(url+link, files={'image': (timestamp_str+'.jpg', image_bytes)}, data=image_data, headers=headers)
+    response = requests.post(url+link, files={'image': (timestamp_str+'.jpg', image_bytes)}, data=flat_image_data, headers=headers)
 
 
     # Check response status code
@@ -104,3 +112,12 @@ def sendImageToServer(image, image_data, IP_address, link):
         except Exception as e:
             print(e)
         
+def flatten_dict(d):
+    flat_data = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            for sub_k, sub_v in v.items():
+                flat_data[f"{k}_{sub_k}"] = sub_v
+        else:
+            flat_data[k] = v
+    return flat_data
