@@ -24,7 +24,7 @@ from ..notifications import teleBot
 from collections import Counter, defaultdict
 from math import floor, ceil
 import os
-
+import datetime
 
 """
 Model detects the following classes
@@ -65,6 +65,11 @@ NO_GOGGLES_CLASS = 0
 BOOTS_CLASS = 2
 NO_BOOTS_CLASS = 3
 
+# GOGGLES_CLASS = 65 #remote
+# NO_GOGGLES_CLASS = 66 #keyboard
+# BOOTS_CLASS = 41 #cup
+# NO_BOOTS_CLASS = 76 #scissors
+
 TRACK_ID_KEEP_ALIVE = 1 # minutes
 
 TOP_CAMERA_INDX = 0
@@ -89,7 +94,6 @@ class TennecoInferenceSystem(InferenceSystem):
         self.initialize_system()
 
     def initialize_system(self) -> None:
-        print(f'num_consequtive_frames = {self.num_consecutive_frames}')
         # List of lists, beacause for each camera feed, we have a list of violations we save to choose the prevalent one as jitter reduction technique (aka goggle, no_goggle, goggle -> goggle )
         self.array_for_frames = [[[] for _ in range(self.num_consecutive_frames)] for _ in range(len(self.cams))]
         self.detections_array = [[[] for _ in range(self.num_consecutive_frames)] for _ in range(len(self.cams))]
@@ -101,9 +105,9 @@ class TennecoInferenceSystem(InferenceSystem):
         self.FrameProcessor = FrameProcessing(inference_system=self)
         self.violation_dictionary = [{} for _ in range(len(self.cams))]
         self.violation_to_server = [[] for _ in range(len(self.cams))]
+        self.averaged_and_filtered_violations = [[] for _ in range(len(self.cams))]
         self.tracker_id_side_entered = [{} for _ in range(len(self.cams))]
         self.ready_to_send = [False for _ in range(len(self.cams))] #once N frames collected, the flag is true. once both flags are True - we send
-        self.averaged_and_filtered_violations = [[] for _ in range(len(self.cams))]
 
 
 
@@ -120,6 +124,7 @@ class TennecoInferenceSystem(InferenceSystem):
         # key = tracker_id
         # value = ["L or R", datetime_obj] 
         if self.tracker_id_side_entered[self.camera_num]:
+            print(f" ##### &&&&& tracker_side_entered dict is: {self.tracker_id_side_entered[self.camera_num].items()} ##### &&&&& ")
             self.tracker_id_side_entered[self.camera_num] = {key:value for key, value in self.tracker_id_side_entered[self.camera_num].items() if (datetime.datetime.now() - value[1]) < datetime.timedelta(minutes=TRACK_ID_KEEP_ALIVE)}
 
     def Update_Dictionary(self) -> None: #Ilya comment - this does not keep track of time tho?
@@ -179,11 +184,13 @@ class TennecoInferenceSystem(InferenceSystem):
 
         for sublist in violations_array:
             new_sublist = []
+            # Find the avg detection between (goggles/no_goggles) and set every detection to that class_id
             for detection in sublist:
                 track_id = detection['track_id']
                 if track_id_counts[track_id] > num_sublists // 2:
                     # Calculate the average class_id for this track_id
                     most_common_class_id = Counter(class_ids_per_track[track_id]).most_common(1)[0][0]
+                    # Update the detection with the newly found class_id that is prevalent (most_common) in the array
                     detection['class_id'] = most_common_class_id
                     new_sublist.append(detection)
 
@@ -200,7 +207,7 @@ class TennecoInferenceSystem(InferenceSystem):
                 all_class_ids.append(detection['class_id'])
 
         if not all_class_ids:
-            return violations_array
+            return []
 
         most_prevalent_class_id = Counter(all_class_ids).most_common(1)[0][0]
 
@@ -233,7 +240,7 @@ class TennecoInferenceSystem(InferenceSystem):
 
         return bool_trigger
 
-    def annotate_violations(self) -> list:
+    def annotate_violations(self, frame, detections) -> list:
         """
         NOT TESTED
         """
@@ -300,8 +307,8 @@ class TennecoInferenceSystem(InferenceSystem):
         # The following 3 arrays are appened in parallel
 
         # Append detections from self.camera_num source to the array for detection jitter reduction
-        print(f"self.detections_array is {self.detections_array}")
-        print(f"using self.camera_num= {self.camera_num} and self.consecutive_frames_cnt[self.camera_num] = {self.consecutive_frames_cnt[self.camera_num]}")
+        # print(f"self.detections_array is {self.detections_array}")
+        # print(f"using self.camera_num= {self.camera_num} and self.consecutive_frames_cnt[self.camera_num] = {self.consecutive_frames_cnt[self.camera_num]}")
         self.detections_array[self.camera_num][self.consecutive_frames_cnt[self.camera_num]] = self.detections
 
         # if self.consecutive_frames_cnt[self.camera_num] > 1: #if cnt==1, we just saved the self.violations in the trigger_event(), no need to do it again
@@ -309,15 +316,22 @@ class TennecoInferenceSystem(InferenceSystem):
 
         # Append violations found in the detections above
         self.violations_array[self.camera_num][self.consecutive_frames_cnt[self.camera_num]]= self.violations
-        print(f'[CAMERA {self.camera_num}] Appending {self.violations} \n to the violations_array and it is now:\n {self.violations_array[self.camera_num]}')
+        # print(f'[CAMERA {self.camera_num}] Appending {self.violations} \n to the violations_array and it is now:')
+        # for i, violations in enumerate(self.violations_array[self.camera_num]):
+        #     print(f'   [CAMERA {self.camera_num}] violations in frame {i} = {violations}')
+        
         # Append an image from self.camera_num source to the array for least blurry choice
-        self.array_for_frames[self.camera_num][self.consecutive_frames_cnt[self.camera_num]] = self.captures[self.camera_num]
+        self.array_for_frames[self.camera_num][self.consecutive_frames_cnt[self.camera_num]] = self.captures_HD[self.camera_num]
+        # self.array_for_frames[self.camera_num][self.consecutive_frames_cnt[self.camera_num]] = self.annotated_frame
         # self.array_for_frames is an array of arrays of images
-        # Need to print out the contents to check if images do get saved in each list
-        print(f'[CAMERA {self.camera_num}] The shape of the array_for_frames[{[self.camera_num]}] is {np.shape(self.array_for_frames[self.camera_num])}')
-        # now print the shape of each element inside self.array_for_frames[self.camera_num]
-        for i, frame in enumerate(self.array_for_frames[self.camera_num]):
-            print(f'[CAMERA {self.camera_num}] The shape of the frame {i} is {np.shape(frame)}')
+
+        if self.debug:
+            # Need to print out the contents to check if images do get saved in each list
+            print(f'[CAMERA {self.camera_num}] The shape of the array_for_frames[{[self.camera_num]}] is {np.shape(self.array_for_frames[self.camera_num])}')
+            # now print the shape of each element inside self.array_for_frames[self.camera_num]
+            
+            for i, frame in enumerate(self.array_for_frames[self.camera_num]):
+                print(f'   [CAMERA {self.camera_num}] The shape of the frame {i} is {np.shape(frame)}')
 
         # Count how many images we already took
         self.consecutive_frames_cnt[self.camera_num] += 1
@@ -345,32 +359,41 @@ class TennecoInferenceSystem(InferenceSystem):
             # We then make the compliance logic happen based on detections in both cameras
             # (ig the bottom camera logic is just if only "boots" is preent - we good)
             # Then we send that together 
-            
-            print(f'[CAMERA {self.camera_num}] violations_array = {self.violations_array[self.camera_num]}')
-            # Now print individual detections in each frame
-            for i, violations in enumerate(self.violations_array[self.camera_num]):
-                print(f'[CAMERA {self.camera_num}] violations in frame {i} = {violations}')
-                # Now print individual detections in each frame and numerate them and show whcih frame they belong to
-                for j, violation in enumerate(violations):
-                    print(f'[CAMERA {self.camera_num}] violation {j} in frame {i} = {violation}')
+            if self.debug:
+                print(f'[CAMERA {self.camera_num}] violations_array = {self.violations_array[self.camera_num]}\n')
+                # Now print individual detections in each frame
+                for i, violations in enumerate(self.violations_array[self.camera_num]):
+                    print(f'[CAMERA {self.camera_num}] violations in frame {i} = {violations}')
+                    # Now print individual detections in each frame and numerate them and show whcih frame they belong to
+                    for j, violation in enumerate(violations):
+                        print(f'   [CAMERA {self.camera_num}] violation {j} in frame {i} = {violation}')
+                    print()
 
             if self.camera_num == TOP_CAMERA_INDX:
                 self.averaged_and_filtered_violations[self.camera_num] = self.process_violations_array_top_cam(self.violations_array[self.camera_num])
                 # In case there's overlap and there's more than 1 person, pick out the frame with most detections (yet send the image of least blurry one still)
                 if len(self.averaged_and_filtered_violations[self.camera_num]) > 0:
                     self.violation_to_server[self.camera_num] = max(self.averaged_and_filtered_violations[self.camera_num], key=len)# Find the longest sublist in the filtered result
-                   
+                    if self.debug:
+                        print(f"\n %% len(self.averaged_and_filtered_violations[{self.camera_num}]) = {len(self.averaged_and_filtered_violations[self.camera_num])}\n")
                 else:
-                    print(f"######## No detections to send from camera {self.camera_num} - it was all a glitch #####")
+                    if self.debug:
+                        print(f"\n######## No detections to send from camera {self.camera_num} - it was all a glitch #####\n")
 
     
             else:
                 ## ADD BOTTOM CAMERA LOGIC HERE
                 self.averaged_and_filtered_violations[self.camera_num] = self.process_violations_array_bottom_cam(self.violations_array[self.camera_num])
                 if len(self.averaged_and_filtered_violations[self.camera_num]) > 0:
+                    # FIX THIS LOGIC to pick least blurry, but only the one with violations
                     self.violation_to_server[self.camera_num] = max(self.averaged_and_filtered_violations[self.camera_num], key=len)# Find the longest sublist in the filtered result
+
+                    #print the len:
+                    if self.debug:
+                        print(f"\n %% len(self.averaged_and_filtered_violations[{self.camera_num}]) = {len(self.averaged_and_filtered_violations[self.camera_num])}\n")
                 else:
-                    print(f"######## No detections to send from camera {self.camera_num} - it was all a glitch #####")
+                    if self.debug:
+                        print(f"\n######## No detections to send from camera {self.camera_num} - it was all a glitch #####\n")
             
             # Finds the least blurry image's index
             
@@ -384,79 +407,28 @@ class TennecoInferenceSystem(InferenceSystem):
                     corrected_violations.append(violation)
             """
 
-            if all(self.ready_to_send) and any(len(item) > 0 for item in self.violation_to_server):
+            if all(self.ready_to_send) and any(len(cam_violations) > 0 for cam_violations in self.violation_to_server[TOP_CAMERA_INDX]):
                 self.system_send()
 
 
 
 
             # Now reset the arrays if both are done collecting the N frames
-            elif all(self.ready_to_send):
+            if all(self.ready_to_send):
                 self.array_for_frames = [[[] for _ in range(self.num_consecutive_frames)] for _ in range(len(self.cams))]
                 self.detections_array = [[[] for _ in range(self.num_consecutive_frames)] for _ in range(len(self.cams))]
                 self.violations_array = [[[] for _ in range(self.num_consecutive_frames)] for _ in range(len(self.cams))]
+                self.violation_to_server = [[] for _ in range(len(self.cams))]
+                self.averaged_and_filtered_violations = [[] for _ in range(len(self.cams))]
                 self.consecutive_frames_cnt = [0 for i in range(len(self.cams))] # counter for #of frames taken after trigger event
+                #clear the ready_to_send flag
+                self.ready_to_send = [False for _ in range(len(self.cams))]
+                if self.debug:
+                    print("\n######## CLEARED MAIN ARRAYS ########")
+                    #Print how logn it took to execute using info from self.trigger_action_start_timer
+                    print(f"\n######## It took {datetime.datetime.now() - self.trigger_action_start_timer} seconds to execute trigger_action ########\n")
 
-        """
-        # Skip if there are no violations
-        if len(corrected_violations):
-            # Pick the least blurry image to send to the server
-            # (we assume images don't vary that much within a 
-            # small enough del_t or in this case N = self.num_consecutive_frames)
-
-            # Finds the least blurry image's index
-            #least_blurry_indx = least_blurry_image_indx(self.array_for_frames[self.camera_num])
-            self.Update_Dictionary()
-
-            # Iterate through all violations initially detected
-            # violation = [person_index, soldering_iron_index, camera_index, violation_code, track_id]
-            # Problem was that the violation's person_idx was being checked if it was inside the 
-            # violation_dictionary when we should be searching for the track id of the person in
-            # the violation 
-            old_violations = [violation for violation in corrected_violations if violation[-1] in self.violation_dictionary[self.camera_num]]
-            new_violations = [violation for violation in corrected_violations if not violation[-1] in self.violation_dictionary[self.camera_num]]
-
-            # For loop for processing new violations with no track_id 
-            for violation in new_violations:
-                # If not then add new violation object to the dictionary
-                camera_id = self.camera_num
-                class_id = violation[0]
-                timestamp = datetime.datetime.now()
-                violation_code = 0 if class_id == 1 else 1 
-                # Meaning that if there's no goggles detected 
-                # the violation code will be 0 and if no boots
-                # are detected then the code will be 1.
- 
-                track_id = violation[-1] # self.detections.tracker_id[violation[0]]
-                # Creates a violation object to be stored in the 
-                self.violation_dictionary[self.camera_num][track_id] = Violation(camera_id=camera_id, class_id=class_id, timestamp=timestamp, violation_code=violation_code)
-                # After dict is updated, prep to send to server
-                self.violation_to_server[self.camera_num].append(violation)
-
-            # For loop for processing old violations with a track_id
-            for violation in old_violations:
-                # Check if violation object has record of the same violation 
-                # in the last 10 minutes 
-                class_id = violation[0]
-                violation_code = 0 if class_id == 1 else 1 
-                violation_object = self.violation_dictionary[self.camera_num][violation[-1]]
-                if violation_object.Check_Code(violation_code, class_id):
-                    # If true, violation already exists and is not valid
-                    continue
-                else:
-                    # If false, then that means that violation is valid and
-                    # should be added to the list of violations to be sent
-                    # to the server 
-                    self.violation_to_server[self.camera_num].append(violation)
-                    # Add code to modify the violation object
-                    violation_object.Add_Code(violation_code=violation_code, class_id=class_id)
-
-            if len(self.violation_to_server[self.camera_num]):
-                self.system_send(least_blurry_indx=least_blurry_indx)
-            
-            # Empty the list to be sent to the server after sending 
-            self.violation_to_server[self.camera_num] = []
-        """
+  
     def system_send(self):
 
 
@@ -477,15 +449,16 @@ class TennecoInferenceSystem(InferenceSystem):
         
 
         #print every class id in each violation in violation_to_server
-        print("\n\n ######## TOP CAMERA VIOLATION - checking goggles ########\n\n")
-        for violation in self.violation_to_server[TOP_CAMERA_INDX]:
-            print(f"\n\n ######## violation class_id = {violation['class_id']} ########\n\n")
-        print(f"\n\n ######## goggle_status = {goggle_status} ########\n\n")
+        if self.debug:
+            print("\n######## TOP CAMERA VIOLATION - checking goggles ########\n")
+            for violation in self.violation_to_server[TOP_CAMERA_INDX]:
+                print(f"\n######## violation class_id = {violation['class_id']} ########")
+            print(f"\n ######## goggle_status = {goggle_status} ########\n")
 
-        print("\n\n ######## BOTTOM CAMERA VIOLATION - checking shoes ########\n\n")
-        for violation in self.violation_to_server[BOTTOM_CAMERA_INDX]:
-            print(f"\n\n ######## violation class_id = {violation['class_id']} ########\n\n")
-        print(f"\n\n ######## shoe_status = {shoe_status} ########\n\n")
+            print("\n ######## BOTTOM CAMERA VIOLATION - checking shoes ########\n")
+            for violation in self.violation_to_server[BOTTOM_CAMERA_INDX]:
+                print(f"\n ######## violation class_id = {violation['class_id']} ########\n")
+            print(f"\n ######## shoe_status = {shoe_status} ########\n")
 
 
 
@@ -525,22 +498,27 @@ class TennecoInferenceSystem(InferenceSystem):
 
         # nicely print the data that is about to be sent - make it distinguishable with spaces and hastags
         # print the data by key pairs
-        print("\n\n##########################################################################")
-        print(f"\n\n ######## Sending data to server ########\n\n")
-        print("##########################################################################\n\n")
-        for key, value in data.items():
-            print(f"{key} : {value}")                
+        if self.debug:
+            print("\n##########################################################################")
+            print( f"###################### Sending data to the server ########################")
+            print(  "##########################################################################\n")
+            for key, value in data.items():
+                print(f"{key} : {value}")                
 
 
-########## FIX THE ISSUE WITH SELF.ARRAY_FRO_FRAMES BEING EMPTY OR WHATEVER THE FUCK
-        # s# Define the frame with the least blurry index
+        # Find the frame with the least blurry index
+        frames_to_send = []
+        for frame_arr in self.array_for_frames:
+            least_blurry_indx = least_blurry_image_indx(frame_arr)
+            frames_to_send.append(frame_arr[least_blurry_indx])
+            # annotated_frame = self.annotate_violations(frame, violation_boxes) #Needs to be FIXED #TODO
+        frame_to_send = np.hstack((frames_to_send[TOP_CAMERA_INDX], frames_to_send[BOTTOM_CAMERA_INDX]))
+        
 
-        least_blurry_indx = least_blurry_image_indx(self.array_for_frames[TOP_CAMERA_INDX])
-        frame = self.array_for_frames[self.camera_num][least_blurry_indx]#send the least blurry image to the server
 
+        
         link = "api/event_update"
-        sendImageToServer(frame, data, self.server_IP, link)
-
+        sendImageToServer(frame_to_send, data, self.server_IP, link)
 
 class FrameProcessing():
     # A class for processing detections found in a frame  
@@ -558,18 +536,17 @@ class FrameProcessing():
 
     
     def violation_creator(self, current_detections) -> list:
-        print(f"\n\n ######## Processing camera {self.system.camera_num} ########\n\n")
         track_id = None
-        filtered_detections = []
-        no_goggles_class = 1
-        no_boots_class = 3
-
         head_class_set = [4]
-        goggle_classes_set = [0, 1] #goggles, no_goggles
-        shoe_classes_set = [2, 3] #safe_shoes, not_safe_shoes
+        
+        filtered_detections = []
+        goggle_classes_set = [GOGGLES_CLASS, NO_GOGGLES_CLASS] #goggles, no_goggles
+        shoe_classes_set = [BOOTS_CLASS, NO_BOOTS_CLASS] #safe_shoes, not_safe_shoes
         
         # Clear any track_ids that have been there longer than TRACK_ID_KEEP_ALIVE (aka 1 min)
         self.system.tracker_id_side_entered_update()
+        if self.system.debug:
+            print(f"\n\n ######## Processing camera {self.system.camera_num} ########\n\n")
 
         if self.system.camera_num == BOTTOM_CAMERA_INDX: #tentatively not trying to track ENTERING/EXITING in the bottom camera because expecting bytetracker to glitch on fast movements of the feet
             if len(current_detections)==0:

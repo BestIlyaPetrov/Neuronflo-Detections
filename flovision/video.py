@@ -28,9 +28,10 @@ def get_device_indices(quantity = 1):
     # Find all available video devices
     # devices = glob.glob('/dev/video*')
     devices = []
-    ip = "192.168.1.132"
     port = 554
+    ip = "192.168.2.51"
     devices.append(f'rtsp://{ip}:{port}/stream2')
+    ip = "192.168.2.50"
     devices.append(f'rtsp://{ip}:{port}/stream2')
     return devices
     # # Sort the device names in ascending order
@@ -131,18 +132,18 @@ class vStream:
             _,self.frame = self.capture.read()
             # print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
             ## Resizing to set dimensions
-            # frame2 = cv2.resize(self.frame, (self.width, self.height))
+            self.frame_resized = cv2.resize(self.frame, (self.width, self.height))
             # frame_rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
             self.new_frame_available = True
 
 
 
     def getFrame(self):
-        if self.frame is None:
-            return (False, self.frame)
+        if self.frame_resized is None:
+            return (False, self.frame_resized, self.frame)
         if self.new_frame_available:
             self.new_frame_available = False
-            return (True, self.frame)
+            return (True, self.frame_resized, self.frame)
         else:
-            return (False, self.frame)
+            return (False, self.frame_resized, self.frame)
 

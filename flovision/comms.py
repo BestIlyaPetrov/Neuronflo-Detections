@@ -93,7 +93,7 @@ def sendImageToServer(image, image_data, IP_address, link):
     else:
         raise ValueError("Could not encode the frame as a JPEG image")
 
-    response = requests.post(url+link, files={'image': (timestamp_str+'.jpg', image_bytes)}, data=flat_image_data, headers=headers)
+    response = requests.post(url+link, files={'cam0': (timestamp_str+'.jpg', image_bytes)}, data=flat_image_data, headers=headers)
 
 
     # Check response status code

@@ -11,6 +11,7 @@ import time
 import os
 
 import supervision as sv
+from supervision.tracker.byte_tracker.basetrack import BaseTrack
 # print(f"Supervision contents are {dir(sv)}")
 import traceback
 import collections
@@ -25,13 +26,16 @@ from .face_id import face_recog
 from .record import Recorder
 
 # Initialize some constants
-BYTETRACKER_MATCH_THRESH = 0.4
-CONFIDENCE_THRESH = 0.4
+BYTETRACKER_MATCH_THRESH = 0.9
+CONFIDENCE_THRESH = 0.2
 
 # Run method params
-NUM_CONSECUTIVE_FRAMES = 3
+NUM_CONSECUTIVE_FRAMES = 5
 TRACK_ID_KEEP_ALIVE = 1 # minutes
+DROP_BYTETRACK_AFTER = 5 #seconds
+BYTETRACKER_FULL_RESET_TIMEOUT = 5 #minutes
 
+#Unused at the moment
 LINE_START = sv.Point(320, 0)
 LINE_END = sv.Point(320, 480)
 
@@ -133,6 +137,7 @@ class InferenceSystem:
         self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
                     if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
         
+        # self.model.classes = [41,65,66,76]  # Set the desired class when using yolov5s for testing
         self.model.eval() #set the model into eval mode
 
         # Create ByteTracker objects for each camera feed
@@ -148,6 +153,7 @@ class InferenceSystem:
         self.annotate_violation = annotate_violation
         self.consecutive_frames_cnt = [0 for i in range(len(self.cams))] # counter for #of frames taken after trigger event
         self.num_consecutive_frames = NUM_CONSECUTIVE_FRAMES # num_consecutive_frames that we want to window (to reduce jitter)
+        self.camera_num = 0 # initialize the index of the video stream being processed
 
 
         # Set the zone params
@@ -173,7 +179,7 @@ class InferenceSystem:
             in enumerate(self.zone_polygons)
         ]
         # Intialize the annotators
-        self.box_annotator = sv.BoxAnnotator(thickness=1, text_thickness=1, text_scale=1)
+        self.box_annotator = sv.BoxAnnotator(thickness=1, text_thickness=1, text_scale=0.5)
         self.label_annotator = sv.LabelAnnotator(text_position=sv.Position.TOP_CENTER)
         self.blur_annotator = sv.BlurAnnotator()
         line_counter = sv.LineZone(start=LINE_START, end=LINE_END)
@@ -199,12 +205,13 @@ class InferenceSystem:
         
 
 
-    def ByteTracker_implementation(self, detections, byteTracker):
+    def ByteTracker_implementation(self, detections):
         # byteTracker is the sv.ByteTrack() object 
-        byte_tracker = byteTracker
         new_detections = []
         if len(detections) != 0:
-            new_detections = byte_tracker.update_with_detections(detections)
+            new_detections = self.trackers[self.camera_num].update_with_detections(detections)
+            #Print both to compare
+            
             #Sort both detections and new_detections based on confidence scores
             sorted_original_indices = np.argsort(detections.confidence)
             sorted_new_indices = np.argsort(new_detections.confidence)
@@ -295,19 +302,42 @@ class InferenceSystem:
         class_names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
         print(f"Class names: {class_names}")
 
+        # Calculate FPS
+        frame_count = 0
+        start_time = time.time()
+        fps=30
+        # Initialize a timer to count the number of seconds since the last detection
+        last_detection_time = time.time()
+
         while True:
             try:
+                # Calculate FPS
+                frame_count += 1
+                elapsed_time = time.time() - start_time
+                if elapsed_time > 5:  # Check every 5 seconds
+                    fps = frame_count / elapsed_time
+                    # update self.trackers                    
+                    # print(f"FPS: {fps}")
+                    for cam_num in range(len(self.cams)):
+                        self.trackers[cam_num].max_time_lost = round(fps) * DROP_BYTETRACK_AFTER # gives total # of frames to drop lost_tracks after
+                    # Reset frame count and time
+                    frame_count = 0
+                    start_time = time.time()
+
                 ### Saving a frame from each camera feed ###
                 self.captures = []
+                self.captures_HD = []
+                
                 frame_unavailable = False
                 for cam in self.cams:
-                    ret, frame = cam.getFrame()
+                    ret, frame, frame_HD = cam.getFrame()
 
                     if not ret:
                         frame_unavailable = True
                         break
 
                     self.captures.append(frame)
+                    self.captures_HD.append(frame_HD)
                 if len(self.captures) < len(self.cams):
                     frame_unavailable = True
             
@@ -324,13 +354,14 @@ class InferenceSystem:
                 # If record flag raised, store frames 
                 if self.record:
                     self.recorder.store()
-
-                self.camera_num = 0 # the index of the video stream being processed
+                self.camera_num = 0
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
                     #Print which camera we are processing
                     # Send through the model
-                    detection_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    # MAYBE REVERT????
+                    # detection_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    detection_frame = frame
                     if self.adjust_brightness:
                         detection_frame = adjust_color(detection_frame)
 
@@ -357,7 +388,28 @@ class InferenceSystem:
 
                     # If detections present, track them. Assign track_id
                     if len(self.detections) > 0:
-                        self.detections = self.ByteTracker_implementation(detections=self.detections, byteTracker=self.trackers[self.camera_num])
+                        # Reset the timer if there are detections
+                        last_detection_time = time.time()
+                        
+                        # Update bytetracker with the most recent fps rounded to the nearest integer
+                        # self.trackers[self.camera_num].frame_rate = round(fps) #this doesn't work - bytetracker's logic makes no sense
+
+                        self.detections = self.ByteTracker_implementation(detections=self.detections)
+                        # print("###### Detections before ByteTrack: ", self.detections)
+                        # self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
+                        # print("###### Detections after ByteTrack: ", self.detections)
+                    else:
+                        # put the detctions through the deafault bytetracker to keep it alive with frame numbers
+                        self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
+                        # If there are no detections, check if the timer has exceeded 5 minutes
+                        if time.time() - last_detection_time > BYTETRACKER_FULL_RESET_TIMEOUT * 60:
+                            # Reinitialize self.trackers if the timer has exceeded 5 minutes
+                            # Doing this to make sure that the bytetracker doesn't keep track of detections that are too old & doesn't keep track_ids really high
+                            if BaseTrack._count > 1000: #if track_id incrementer reaches 1000
+                                BaseTrack._count = 0 # We don't want the track_ids to get out of hand eventually
+                            self.trackers = [sv.ByteTrack(match_thresh=BYTETRACKER_MATCH_THRESH) for i in range(len(self.cams))]
+                            last_detection_time = time.time()
+
         
                     """
                     # Check which zone each detection belongs to
@@ -383,12 +435,13 @@ class InferenceSystem:
                     self.masks  = [zone.PolyZone.trigger(detections=self.detections) for zone in self.zone_polygons]
                     # Annotate the zones and the detections on the frame if the flag is set
                     if self.annotate_raw:
-                        annotated_frame = frame.copy()
-                        annotated_frame = self.label_annotator.annotate(scene=annotated_frame, detections=self.detections)
-                        # annotated_frame = self.box_annotator.annotate(scene=annotated_frame, detections=self.detections)
+                        self.annotated_frame = frame.copy()
+                        labels = [f"#{tracker_id} {self.model.names[class_id]} {confidence:0.2f}" for _, _, confidence, class_id, tracker_id in self.detections]
+                        # self.annotated_frame = self.label_annotator.annotate(scene=self.annotated_frame, detections=self.detections)
+                        self.annotated_frame = self.box_annotator.annotate(scene=self.annotated_frame, detections=self.detections, labels=labels)
                         for zone_annotator, zone in zip(self.zone_annotators, self.zone_polygons):
-                            annotated_frame = zone_annotator.annotate(scene=annotated_frame) if zone.camera_id == self.camera_num else annotated_frame
-                        # annotated_frame = self.zone_annotators[self.camera_num].annotate(scene=annotated_frame)
+                            self.annotated_frame = zone_annotator.annotate(scene=self.annotated_frame) if zone.camera_id == self.camera_num else self.annotated_frame
+                        # self.annotated_frame = self.zone_annotators[self.camera_num].annotate(scene=self.annotated_frame)
 
                     # MAYBE USE THIS IN CONJUNCTION WITH SIALOI's CODE
                     # Split into different sets of detections depending on object, by bounding box (aka tuple(goggles/no_goggles, shoes/no_shoes) )
@@ -396,6 +449,10 @@ class InferenceSystem:
 
                     # TRIGGER EVENT - TODO: ADD MULTIPLE TRIGGER EVENTS FUNCTIONALITY
                     if self.trigger_event():
+                        # start a object-tied timer using dateime, which we will end after trigger_action is complete
+                        self.trigger_action_start_timer = datetime.datetime.now()
+                         
+
                         self.detection_trigger_flag[self.camera_num] = True
                         
                         if self.debug:
@@ -426,15 +483,16 @@ class InferenceSystem:
                             # self.detections_array = [[[] for _ in range(len(self.num_consecutive_frames))] for _ in range(len(self.cams))]
                             # self.violations_array = [[[] for _ in range(len(self.num_consecutive_frames))] for _ in range(len(self.cams))]
 
-                            if self.debug:
-                                print("CLEARED MAIN ARRAYS")
+                            
 
 
                     self.other_actions()
                 
                     # Display frame
                     if self.display:
-                        cv2.imshow(f'Camera {self.cams[self.camera_num].src}', annotated_frame)
+                        fps_text = f"FPS: {fps:.2f}"  # Displaying with 2 decimal points for precision
+                        cv2.putText(self.annotated_frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                        cv2.imshow(f'Camera {self.cams[self.camera_num].src}', self.annotated_frame)
 
                     # Update iteration index for the loop    
                     self.camera_num += 1
