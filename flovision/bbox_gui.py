@@ -105,7 +105,9 @@ def create_bounding_boxes(cam):
     last_saved_coords = None  # To track the last saved set of coordinates
 
     while True:
-        ret, frame = cam.getFrame()
+        getframe = cam.getFrame()
+        ret = getframe[0]
+        frame = getframe[1]
         if ret:
             break
 
