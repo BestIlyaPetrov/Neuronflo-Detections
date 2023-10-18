@@ -28,11 +28,21 @@ def get_device_indices(quantity = 1):
     # Find all available video devices
     # devices = glob.glob('/dev/video*')
     devices = []
+
+    channelNo = 1 # Change to the desired channel number (this should always remain 1, otherwise no connection will be established)
+    typeNo = 0 # Change to desired type
+    username  = "admin"
+    password = "Ventilacia1"
     port = 554
-    ip = "192.168.2.51"
-    devices.append(f'rtsp://{ip}:{port}/stream2')
-    ip = "192.168.2.50"
-    devices.append(f'rtsp://{ip}:{port}/stream2')
+    ip = "192.168.2.20"
+    video_url = f'rtsp://{username}:{password}@{ip}:{port}/cam/realmonitor?channel={channelNo}&subtype={typeNo}'
+    devices.append(video_url)
+
+    ip = "192.168.2.21"
+    video_url = f'rtsp://{username}:{password}@{ip}:{port}/cam/realmonitor?channel={channelNo}&subtype={typeNo}'
+    devices.append(video_url)
+    # devices.append(f'rtsp://{ip}:{port}/stream2')
+    # devices.append(f'rtsp://{ip}:{port}/stream2')
     return devices
     # # Sort the device names in ascending order
     # devices.sort()

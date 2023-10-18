@@ -441,6 +441,8 @@ class InferenceSystem:
                         self.annotated_frame = self.box_annotator.annotate(scene=self.annotated_frame, detections=self.detections, labels=labels)
                         for zone_annotator, zone in zip(self.zone_annotators, self.zone_polygons):
                             self.annotated_frame = zone_annotator.annotate(scene=self.annotated_frame) if zone.camera_id == self.camera_num else self.annotated_frame
+                    else:
+                        self.annotated_frame = frame.copy()
                         # self.annotated_frame = self.zone_annotators[self.camera_num].annotate(scene=self.annotated_frame)
 
                     # MAYBE USE THIS IN CONJUNCTION WITH SIALOI's CODE
