@@ -2,8 +2,8 @@ from threading import Thread
 import cv2
 import numpy as np
 import json
-import glob
-
+import glob, os
+from pathlib import Path
 
 
 
@@ -23,27 +23,52 @@ def adjust_color(img):
     return processed_frame   
 
 
-def get_device_indices(quantity = 1):
-    # Determine the two sources to use for cameras:
-    # Find all available video devices
-    # devices = glob.glob('/dev/video*')
+
+def get_device_indices(quantity=1):
+# Get the full path of the current script
+    script_path = os.path.abspath(__file__)
+
+    # Get the directory containing the current script
+    script_directory = os.path.dirname(script_path)
     devices = []
+    with open(Path(script_directory) / 'video-config.json', 'r') as f:
+        config = json.load(f)
 
-    channelNo = 1 # Change to the desired channel number (this should always remain 1, otherwise no connection will be established)
-    typeNo = 0 # Change to desired type
-    username  = "admin"
-    password = "Ventilacia1"
-    port = 554
-    ip = "192.168.2.20"
-    video_url = f'rtsp://{username}:{password}@{ip}:{port}/cam/realmonitor?channel={channelNo}&subtype={typeNo}'
-    devices.append(video_url)
+    for camera in config["cameras"]:
+        ip = camera.get("ip")
+        username = camera.get("username")
+        password = camera.get("password")
+        port = camera.get("port", 554)  # Default to 554 if port is not provided
+        path = camera.get("path", "")  # Default to empty string if path is not provided
 
-    ip = "192.168.2.21"
-    video_url = f'rtsp://{username}:{password}@{ip}:{port}/cam/realmonitor?channel={channelNo}&subtype={typeNo}'
-    devices.append(video_url)
-    # devices.append(f'rtsp://{ip}:{port}/stream2')
-    # devices.append(f'rtsp://{ip}:{port}/stream2')
+        # Check if channelNo and typeNo are provided, and format the path accordingly
+        if "channelNo" in camera and "typeNo" in camera:
+            channelNo = camera["channelNo"]
+            typeNo = camera["typeNo"]
+            path = path.format(channelNo=channelNo, typeNo=typeNo)
+
+        # Construct video URL based on the presence of username and password
+        if username and password:
+            video_url = f'rtsp://{username}:{password}@{ip}:{port}{path}'
+        else:
+            video_url = f'rtsp://{ip}:{port}{path}'
+
+        devices.append(video_url)
+
     return devices
+
+# def get_device_indices(quantity = 1):
+#     # Determine the two sources to use for cameras:
+#     # Find all available video devices
+#     # devices = glob.glob('/dev/video*')
+#     devices = []
+#     port = 554
+#     ip = "192.168.2.51"
+#     devices.append(f'rtsp://{ip}:{port}/stream2')
+#     ip = "192.168.2.50"
+#     devices.append(f'rtsp://{ip}:{port}/stream2')
+#     return devices
+
     # # Sort the device names in ascending order
     # devices.sort()
     # # Use the first device as the capture index
@@ -114,11 +139,13 @@ def least_blurry_image_indx(frame_list):
         blur_val_list.append(fm)
     # print("BLUR VALS:", blur_val_list)
     return np.array(blur_val_list).argmax()
-
+    # argsort returns indices that would sort the array in ascending order
+    # We reverse the order to get indices for descending order of blurriness
+    # return np.argsort(blur_val_list)[::-1]
 
 class vStream:
     def __init__(self, src, cam_num, resolution):
-        print("Openning camera at link: ", src)
+        print("Opening camera at link: ", src)
         self.width = resolution[0]
         self.height = resolution[1]
         

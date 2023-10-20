@@ -5,12 +5,14 @@ import cv2
 import time
 import numpy as np
 import torch, torchvision
+from utils.general import non_max_suppression
 import json
 import datetime
 import time
 import os
 
 import supervision as sv
+from supervision import Detections
 from supervision.tracker.byte_tracker.basetrack import BaseTrack
 # print(f"Supervision contents are {dir(sv)}")
 import traceback
@@ -350,6 +352,22 @@ class InferenceSystem:
 
                     continue
 
+                """
+                # batched_data = torch.stack(self.captures).to('0')  # Stack data into a single batch
+                batched_data = torch.stack([torch.tensor(img) for img in self.captures]).to("cuda:0")
+                # Print shape:
+                print("Batched data shape: ", batched_data.shape)
+                batched_data = batched_data.permute(0, 3, 1, 2)
+                print("Batched data reshaped shape: ", batched_data.shape)
+
+
+                with torch.no_grad():
+                    output = self.model(batched_data)
+                    predictions = non_max_suppression(output, conf_thres=0.5, iou_thres=0.8)
+
+                print(predictions)
+                detections = [Detections.empty() for _ in range(len(self.captures))]
+                """
                 ##### Iterating over frames saved from each of the connected cameras #####
                 # If record flag raised, store frames 
                 if self.record:
@@ -357,6 +375,8 @@ class InferenceSystem:
                 self.camera_num = 0
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
+
+                
                     #Print which camera we are processing
                     # Send through the model
                     # MAYBE REVERT????

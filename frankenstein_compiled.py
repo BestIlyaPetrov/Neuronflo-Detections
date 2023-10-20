@@ -4,7 +4,7 @@ import cv2
 import argparse
 
 # VIDEO RESOLUTION
-video_res = [640, 360]
+video_res = [640, 384]
 
 # NMS paparms
 # conf_thres = 0.5

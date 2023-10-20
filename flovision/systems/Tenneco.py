@@ -6,6 +6,8 @@ import torch, torchvision
 import json
 import datetime
 import time
+from PIL import Image, ImageDraw, ImageFont
+
 
 import supervision as sv
 import traceback
@@ -219,7 +221,6 @@ class TennecoInferenceSystem(InferenceSystem):
         return violations_array
 
 
-    # re-write trigger event to give true if there are any detections in any zone in self.zone_polygons
     def trigger_event(self) -> bool:
         bool_trigger = False
         if self.detection_trigger_flag[self.camera_num]:
@@ -240,9 +241,86 @@ class TennecoInferenceSystem(InferenceSystem):
 
         return bool_trigger
 
-    def annotate_violations(self, frame, detections) -> list:
+    def annotate_violations(self, frame, violation) -> list:
         """
         NOT TESTED
+        """
+        # violation has this dict format:
+        # {'class_id': 1, 'bbox': [Xmin, Ymin, Xmax, Ymax], 'track_id': 1, 'frame_num': 0}
+        if violation["class_id"] == GOGGLES_CLASS or violation["class_id"] == BOOTS_CLASS:
+            text = 'Отлично!'
+            #green color
+            color = (0, 255, 0)
+        elif violation["class_id"] == NO_GOGGLES_CLASS:
+            text = 'Очки!'
+            # red color in RGB
+            color = (255, 0, 0)
+        elif violation["class_id"] == NO_BOOTS_CLASS:
+            text = 'Обувь!'
+            # red color in RGB
+            color = (255, 0, 0)
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.5
+        font_color = (255, 255, 255)  # Red color in BGR format
+        box_color = color
+        line_thickness = 2
+        font_thickness = 1
+
+        # Get the bounding box coordinates
+        x_min, y_min, x_max, y_max = [int(round(coord)) for coord in violation['bbox']]
+
+        # Pad the bbx by 10px on each side, but make sure it doesn't go out of the frame
+        x_min = max(0, x_min - 10)
+        y_min = max(0, y_min - 10)
+        x_max = min(frame.shape[1], x_max + 10)
+        y_max = min(frame.shape[0], y_max + 10)
+      
+
+        # Draw the rectangle around the detected object
+        #print the values to put in rectangle
+        # print(f"x_min = {x_min}, y_min = {y_min}, x_max = {x_max}, y_max = {y_max}, box_color = {box_color}, line_thickness = {line_thickness}")
+        
+        # Convert the OpenCV image format to PIL image format
+        pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(pil_image)
+
+        # Load the custom font
+        font_path = '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf'
+
+        # font = ImageFont.truetype(font_path, size=int(frame.shape[0] * 0.025))  # Adjust size as needed
+
+        # Calculate the width of the detection box
+        box_width = x_max - x_min
+
+        # Set an initial font size
+        font_size = int(box_width * 0.8)  # Start with 80% of box width as an initial guess
+
+        # Create a font object with the initial size
+        font = ImageFont.truetype(font_path, size=font_size)
+
+        # Get the width of the text using the current font size
+        text_width, _ = ImageDraw.Draw(Image.new('RGB', (1, 1))).textsize(text, font=font)
+
+        # Adjust font size iteratively until text width fits within the box width
+        while text_width > box_width:
+            font_size -= 1  # Decrement font size
+            font = ImageFont.truetype(font_path, size=font_size)
+            text_width, text_height = ImageDraw.Draw(Image.new('RGB', (1, 1))).textsize(text, font=font)
+
+        # Draw the rectangle
+        draw.rectangle([x_min, y_min, x_max, y_max], outline=box_color, width=line_thickness)
+        
+        # Draw the text background
+        # text_width, text_height = draw.textsize(text, font=font)
+        draw.rectangle([x_min, y_min - text_height - 5, x_min + text_width, y_min], fill=box_color)
+        
+        # Draw the text
+        draw.text((x_min, y_min - text_height - 5), text, font=font, fill=font_color)
+        
+        # Convert PIL image format back to OpenCV image format
+        frame = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
         """
         # Use this function to annotate the frame's
         # valid violations.   
@@ -285,7 +363,7 @@ class TennecoInferenceSystem(InferenceSystem):
             frame = cv2.putText(frame, annotation_text, text_position, font, font_scale, font_color, font_thickness)
             # Bounding box
             frame = cv2.rectangle(frame, positions[0], positions[1], box_color, line_thickness)
-
+        """
         return frame
 
     def trigger_action(self) -> None:
@@ -508,14 +586,32 @@ class TennecoInferenceSystem(InferenceSystem):
 
         # Find the frame with the least blurry index
         frames_to_send = []
-        for frame_arr in self.array_for_frames:
-            least_blurry_indx = least_blurry_image_indx(frame_arr)
-            frames_to_send.append(frame_arr[least_blurry_indx])
-            # annotated_frame = self.annotate_violations(frame, violation_boxes) #Needs to be FIXED #TODO
+        # self.array_for_frames has the structure of:
+        # [[],[]...], [[],[],...] where first list is cam0 and second list is cam1
+        # so for each cam we choose a frame to send
+        for frame_arr, violations in zip(self.array_for_frames, self.violation_to_server):
+            # frames_to_send.append(frame_arr[violation["frame_num"]])
+            num_violations = len(violations)
+            print("violations: ", violations)
+            if num_violations >= 1:
+                frame_num = violations[0]["frame_num"] #all chosen violations will have the same frame number
+            else:
+                print("No detections in the image being sent from camera {self.camera_num}")
+                frames_to_send.append(frame_arr[least_blurry_image_indx(frame_arr)])
+                continue
+            annotated_frame = frame_arr[frame_num].copy()
+            # detection_bboxes = [violation['bbox'] for violation in violations]
+            for violation in violations:
+                annotated_frame = self.annotate_violations(annotated_frame, violation)
+            frames_to_send.append(annotated_frame)
+
+
         frame_to_send = np.hstack((frames_to_send[TOP_CAMERA_INDX], frames_to_send[BOTTOM_CAMERA_INDX]))
         
 
-
+        # right before sending, set all involved track_ids to "EXITING" status
+        for violation in self.violation_to_server[TOP_CAMERA_INDX]:
+            self.tracker_id_side_entered[self.camera_num][violation["track_id"]] = ["EXITING", datetime.datetime.now()]
         
         link = "api/event_update"
         sendImageToServer(frame_to_send, data, self.server_IP, link)
@@ -553,7 +649,7 @@ class FrameProcessing():
                 return []
             
             shoe_zone_detections = current_detections[self.system.masks[2] & np.isin(current_detections.class_id, shoe_classes_set)]
-            return [{"bbox":detection[0], "confidence":detection[-3], "class_id":detection[-2], "track_id":detection[-1]} for detection in shoe_zone_detections]
+            return [{"bbox":detection[0], "confidence":detection[-3], "class_id":detection[-2], "track_id":detection[-1], "frame_num":self.system.consecutive_frames_cnt[self.system.camera_num]} for detection in shoe_zone_detections]
            
         
         else:# self.system.camera_num == TOP_CAMERA_INDX:
@@ -618,7 +714,7 @@ class FrameProcessing():
             # Now refer back to the newly updated dict to see if the person was ENTERING or EXITING initially
             if self.system.tracker_id_side_entered[self.system.camera_num][track_id][0] == "ENTERING":
                 # filtered_detections.append(detection)
-                filtered_detections.append({"bbox":detection[0], "confidence":detection[-3], "class_id":detection[-2], "track_id":detection[-1]})
+                filtered_detections.append({"bbox":detection[0], "confidence":detection[-3], "class_id":detection[-2], "track_id":detection[-1], "frame_num":self.system.consecutive_frames_cnt[self.system.camera_num]})
 
                 if self.system.debug:
                     print(f"######### Therefore, adding track_id: {track_id} to the detections list because person was ENTERING ############")
