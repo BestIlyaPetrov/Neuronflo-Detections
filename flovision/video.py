@@ -1,9 +1,39 @@
-from threading import Thread
+from threading import Thread, Lock
 import cv2
+# print("CV2 INFO:", cv2.getBuildInformation())
 import numpy as np
 import json
 import glob, os
 from pathlib import Path
+import math, time
+
+
+def upscale_coordinates(x_min, y_min, x_max, y_max, input_resolution, output_resolution):
+    # Unpack input and output resolutions
+    input_width, input_height   = input_resolution
+    output_width, output_height   = output_resolution
+    # print 
+    print("INPUT RESOLUTION:", input_resolution)
+    print("OUTPUT RESOLUTION:", output_resolution)
+
+    # Calculate scaling factors
+    width_scale = output_width / input_width
+    height_scale = output_height / input_height
+
+    # Upscale the coordinates
+    upscaled_x_min = int(round(x_min * width_scale))
+    upscaled_y_min = int(round(y_min * height_scale))
+    upscaled_x_max = int(round(x_max * width_scale))
+    upscaled_y_max = int(round(y_max * height_scale))
+    # print both coords
+    print("INPUT COORDS:", x_min, y_min, x_max, y_max)
+    print("UPSCALED COORDS:", upscaled_x_min, upscaled_y_min, upscaled_x_max, upscaled_y_max)
+
+    return upscaled_x_min, upscaled_y_min, upscaled_x_max, upscaled_y_max
+
+
+
+
 
 
 
@@ -24,7 +54,32 @@ def adjust_color(img):
 
 
 
-def get_device_indices(quantity=1):
+"""
+Example config.json file:
+
+{
+    "cameras": [
+      {
+        "type":"rtsp",
+        "ip": "192.168.2.51",
+        "port": 554,
+        "path": "/stream1"
+      },
+      {
+        "type":"rtsp",
+        "ip": "192.168.2.50",
+        "port": 554,
+        "path": "/stream1"
+      }
+    ]
+  }
+
+
+ or (TBDownloaded from tenneco jetson)
+
+
+"""
+def get_camera_src(quantity=1):
 # Get the full path of the current script
     script_path = os.path.abspath(__file__)
 
@@ -35,56 +90,70 @@ def get_device_indices(quantity=1):
         config = json.load(f)
 
     for camera in config["cameras"]:
-        ip = camera.get("ip")
-        username = camera.get("username")
-        password = camera.get("password")
-        port = camera.get("port", 554)  # Default to 554 if port is not provided
-        path = camera.get("path", "")  # Default to empty string if path is not provided
+        if camera["type"] == "rtsp":
+            ip = camera.get("ip")
+            username = camera.get("username")
+            password = camera.get("password")
+            port = camera.get("port", 554)  # Default to 554 if port is not provided
+            path = camera.get("path", "")  # Default to empty string if path is not provided
 
-        # Check if channelNo and typeNo are provided, and format the path accordingly
-        if "channelNo" in camera and "typeNo" in camera:
-            channelNo = camera["channelNo"]
-            typeNo = camera["typeNo"]
-            path = path.format(channelNo=channelNo, typeNo=typeNo)
+            # Check if channelNo and typeNo are provided, and format the path accordingly
+            if "channelNo" in camera and "typeNo" in camera:
+                channelNo = camera["channelNo"]
+                typeNo = camera["typeNo"]
+                path = path.format(channelNo=channelNo, typeNo=typeNo)
 
-        # Construct video URL based on the presence of username and password
-        if username and password:
-            video_url = f'rtsp://{username}:{password}@{ip}:{port}{path}'
-        else:
-            video_url = f'rtsp://{ip}:{port}{path}'
+            # Construct video URL based on the presence of username and password
+            if username and password:
+                video_url = f'rtsp://{username}:{password}@{ip}:{port}{path}'
+            else:
+                video_url = f'rtsp://{ip}:{port}{path}'
 
-        devices.append(video_url)
+            devices.append(video_url)
+        elif camera["type"] == "usb":
+            usb_devices = glob.glob('/dev/video*')
+            if not usb_devices:
+                raise ValueError('No usb video devices found')
+            usb_devices.sort()
+            for cam in usb_devices:
+                if cam[-1] in devices:
+                    continue
+                else:
+                    devices.append(cam[-1])
+                    break
+            
+
 
     return devices
 
-# def get_device_indices(quantity = 1):
-#     # Determine the two sources to use for cameras:
-#     # Find all available video devices
-#     # devices = glob.glob('/dev/video*')
-#     devices = []
-#     port = 554
-#     ip = "192.168.2.51"
-#     devices.append(f'rtsp://{ip}:{port}/stream2')
-#     ip = "192.168.2.50"
-#     devices.append(f'rtsp://{ip}:{port}/stream2')
-#     return devices
+def get_device_indices(quantity = 1):
+    # Determine the two sources to use for cameras:
+    # Find all available video devices
+    # devices = glob.glob('/dev/video*')
+    devices = []
+    # port = 554
+    # ip = "192.168.2.51"
+    # devices.append(f'rtsp://{ip}:{port}/stream2')
+    # ip = "192.168.2.50"
+    # devices.append(f'rtsp://{ip}:{port}/stream2')
+    # return devices
 
-    # # Sort the device names in ascending order
-    # devices.sort()
-    # # Use the first device as the capture index
-    # # cap_index = [0,1] #default values aka /dev/video0 and /dev/video1
-    # # If there are no devices available, raise an error
-    # if not devices:
-    #     raise ValueError('No video devices found')
-    # elif len(devices) < quantity:
-    #     raise ValueError(f'Not enough cameras connected. Only found {len(devices)}, but need {quantity}')
-    # # Otherwise, use the lowest available indexes
-    # else:
-    #     cap_index = []
-    #     #Creating an array of camera device indices. Aka if we find /dev/video0 and /dev/video2, cap_index == [0,2]
-    #     for i in range(0, quantity):
-    #         cap_index.append(int(devices[i][-1]))
-    #     return cap_index
+    # Sort the device names in ascending order
+    devices.sort()
+    # Use the first device as the capture index
+    # cap_index = [0,1] #default values aka /dev/video0 and /dev/video1
+    # If there are no devices available, raise an error
+    if not devices:
+        raise ValueError('No video devices found')
+    elif len(devices) < quantity:
+        raise ValueError(f'Not enough cameras connected. Only found {len(devices)}, but need {quantity}')
+    # Otherwise, use the lowest available indexes
+    else:
+        cap_index = []
+        #Creating an array of camera device indices. Aka if we find /dev/video0 and /dev/video2, cap_index == [0,2]
+        for i in range(0, quantity):
+            cap_index.append(int(devices[i][-1]))
+        return cap_index
 
 def draw_border(frame, compliant, border_width=5):
     """
@@ -143,37 +212,155 @@ def least_blurry_image_indx(frame_list):
     # We reverse the order to get indices for descending order of blurriness
     # return np.argsort(blur_val_list)[::-1]
 
+
+
+"""
 class vStream:
     def __init__(self, src, cam_num, resolution):
         print("Opening camera at link: ", src)
-        self.width = resolution[0]
-        self.height = resolution[1]
+        self.width, self.height = resolution
+
+        # Constructing a GStreamer pipeline for hardware-accelerated decoding (assuming src is an RTSP link)
+        gstreamer_pipeline = (
+            f'rtspsrc location={src} latency=50 ! rtph264depay ! h264parse ! nvv4l2decoder ! '
+            'videoconvert ! video/x-raw, format=(string)BGRx ! '
+            f'videoscale ! video/x-raw, width={self.width}, height={self.height} ! appsink'
+        )
+        # gstreamer_pipeline = (
+        #     f'rtspsrc location={src} latency=50 ! rtph265depay ! h265parse ! nvv4l2decoder ! '
+        #     'videoconvert ! video/x-raw, format=(string)BGRx ! '
+        #     f'videoscale ! video/x-raw, width={self.width}, height={self.height} ! appsink'
+        # )
+        self.capture = cv2.VideoCapture(gstreamer_pipeline, cv2.CAP_GSTREAMER)
         
-        self.capture=cv2.VideoCapture(src)
-        # self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        # self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        # success = self.capture.set(cv2.CAP_PROP_FPS, 30.0)
+        # Check if capture was successful
+        if not self.capture.isOpened():
+            print("Error: Camera not opened")
+            print("Error Message:", self.capture.getExceptionMessage())
+            raise ValueError("Unable to open camera")
+
         self.src = cam_num
         self.new_frame_available = False
         self.frame = None
-        self.frame_processed = None
+        self.frame_resized = None
+        self.lock = Lock()
         self.thread = Thread(target=self.update, args=())
-        self.thread.daemon=True
+        self.thread.daemon = True
         self.thread.start()
-        
-
-
         
     def update(self):
         while True:
-            getframe = self.capture.read()
-            self.frame = getframe[1]
-            # print(self.src, self.capture.get(cv2.CAP_PROP_FPS))
-            ## Resizing to set dimensions
-            self.frame_resized = cv2.resize(self.frame, (self.width, self.height))
-            # frame_rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+            ret, frame = self.capture.read()
+            if not ret:
+                print(f"Failed to grab frame from source {self.src}")
+                break
+            self.lock.acquire()
+            self.frame = frame
+            self.frame_resized = cv2.resize(frame, (self.width, self.height))
             self.new_frame_available = True
+            self.lock.release()
 
+    def getFrame(self):
+        self.lock.acquire()
+        new_frame = self.new_frame_available
+        resized = self.frame_resized
+        original = self.frame
+        if new_frame:
+            self.new_frame_available = False
+        self.lock.release()
+        return (new_frame, resized, original)
+"""
+
+
+
+class vStream:
+    def __init__(self, src, cam_num, resolution, rotation_type=None):
+        print("Opening camera at link: ", src)
+        self.rotation_type = rotation_type
+        self.inference_width = resolution[0]
+        self.inference_height = resolution[1]
+        self.src_link = src
+        self.src = cam_num
+        self.new_frame_available = False
+        self.frame = None
+        self.frame_resized= None
+        self.running = False
+        self.kill_update_loop = False
+
+        if self.rotation_type not in [cv2.ROTATE_90_CLOCKWISE,cv2.ROTATE_90_COUNTERCLOCKWISE,cv2.ROTATE_180]:
+            self.rotation_type = None
+            print("Rotation type not supported. Defaulting to no rotation")
+        
+        self.capture=cv2.VideoCapture(src)
+        if self.capture.isOpened():
+            self.width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = self.capture.get(cv2.CAP_PROP_FPS)  # warning: may return 0 or nan
+            self.fps = max((fps if math.isfinite(fps) else 0) % 100, 0) or 30  # 30 FPS fallback
+            print(f'Success frames {self.width}x{self.height} at {self.fps:.2f} FPS')
+
+            self.thread = Thread(target=self.update, args=())
+            self.thread.daemon=True
+            self.running = True
+            self.thread.start()
+        else:
+            self.reconnect()
+        
+    def reconnect(self):
+
+        try:
+            """Attempt to reconnect the camera."""
+            print(f"Attempting to reconnect cam {self.src} at {self.src_link}...")
+            self.running = False
+            time.sleep(1)  # give it a short break before reconnecting
+            self.capture = cv2.VideoCapture(self.src_link)
+            if self.capture.isOpened():
+                self.width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+                self.height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = self.capture.get(cv2.CAP_PROP_FPS)  # warning: may return 0 or nan
+                self.fps = max((fps if math.isfinite(fps) else 0) % 100, 0) or 30  # 30 FPS fallback
+                print(f'Success frames {self.width}x{self.height} at {self.fps:.2f} FPS')
+                self.running = True
+            else:
+                raise ValueError(f"Unable to open camera {self.src} at {self.src_link}")
+        except Exception as e:
+            print(f"Can't reconnect because {e}")
+            self.reconnect()
+
+
+    def update(self):
+        fps_cnt = 0 
+        cnt=0
+        start_time = time.time()
+        while True:
+            if self.running:
+                try:
+                    getframe = self.capture.read()
+                    if self.rotation_type is None:
+                        self.frame = cv2.rotate(getframe[1])
+                    else: 
+                        self.frame = cv2.rotate(getframe[1],self.rotation_type)
+
+                    self.frame_resized = cv2.resize(self.frame, (self.inference_width, self.inference_height))
+                    self.new_frame_available = True
+                    # fps_cnt += 1
+                    # if cnt % 10 == 0:
+                    #     elapsed_time = time.time() - start_time
+                    #     fps = fps_cnt / elapsed_time
+                    #     print(f"Actual camera FPS: {fps:.2f} for cam {self.src}")
+                    #     fps_cnt = 0
+                    #     start_time = time.time()
+                    if cnt > 0:
+                        print(f"Stream from cam {self.src} is available again")
+                        cnt = 0
+                except:
+                    if cnt < 1:
+                        print(f"Frames can't be read from cam {self.src}")
+                        cnt +=1
+                        self.reconnect()
+                    continue
+            if self.kill_update_loop:
+                break
 
 
     def getFrame(self):
@@ -184,4 +371,15 @@ class vStream:
             return (True, self.frame_resized, self.frame)
         else:
             return (False, self.frame_resized, self.frame)
+        
+    def isFrameAvailable(self):
+        return self.new_frame_available
+    
+    def stopAndRelease(self):
+        self.running = False
+        self.kill_update_loop = True
+        self.thread.join()
+        self.capture.release()
+        
+
 

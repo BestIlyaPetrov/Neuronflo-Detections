@@ -20,26 +20,30 @@ import collections
 from pathlib import Path
 
 from .bbox_gui import create_bounding_boxes, load_bounding_boxes
-from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices, adjust_color
+from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_camera_src, adjust_color
 from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
 from .face_id import face_recog
 from .record import Recorder
+from utils.torch_utils import select_device, smart_inference_mode
+
+
+
 
 # Initialize some constants
-BYTETRACKER_MATCH_THRESH = 0.9
+BYTETRACKER_MATCH_THRESH = 0.95
 CONFIDENCE_THRESH = 0.2
 
 # Run method params
-NUM_CONSECUTIVE_FRAMES = 5
+NUM_CONSECUTIVE_FRAMES = 3
 TRACK_ID_KEEP_ALIVE = 1 # minutes
 DROP_BYTETRACK_AFTER = 5 #seconds
 BYTETRACKER_FULL_RESET_TIMEOUT = 5 #minutes
 
-#Unused at the moment
-LINE_START = sv.Point(320, 0)
-LINE_END = sv.Point(320, 480)
+# #Unused at the moment
+# LINE_START = sv.Point(320, 0)
+# LINE_END = sv.Point(320, 480)
 
 
 class InferenceSystem:
@@ -50,43 +54,46 @@ class InferenceSystem:
     def __init__(self, **kwargs) -> None:
         model_name = kwargs.get('model_name')
         video_res = kwargs.get('video_res')
-        display = kwargs.get('display')
-        save = kwargs.get('save')
         bboxes = kwargs.get('bboxes')
         num_devices = kwargs.get('num_devices')
         model_type = kwargs.get('model_type', 'custom')
         model_directory = kwargs.get('model_directory', "./")
         model_source = kwargs.get('model_source', 'local')
-        detected_items = kwargs.get('detected_items', [])
+        cam_rotation_type = kwargs.get('cam_rotation_type', None)
+        # detected_items = kwargs.get('detected_items', [])
         server_IP = kwargs.get('server_IP', 'local')
-        annotate_raw = kwargs.get('annotate_raw', False)
-        annotate_violation = kwargs.get('annotate_violation', False)
-        debug = kwargs.get('debug', False)
-        record = kwargs.get('record', False)
+        self.display = kwargs.get('display')
+        self.save = kwargs.get('save')
+        self.annotate_raw = kwargs.get('annotate_raw', False)
+        self.annotate_violation = kwargs.get('annotate_violation', False)
+        self.debug = kwargs.get('debug', False)
+        self.record = kwargs.get('record', False)
         self.adjust_brightness = kwargs.get('adjust_brightness', False)
         self.save_labels = kwargs.get('save_labels', False)
         self.use_nms = kwargs.get('use_nms', True)
+        self.data_gather_only = kwargs.get('data_gather_only', False)
 
         print("\n\n##################################")
         print("PARAMETERS INSIDE INFERENCE.PY\n")
         print(f"model_name: {model_name}")
         print(f"video_res: {video_res}")
-        print(f"display: {display}")
-        print(f"save: {save}")
         print(f"bboxes: {bboxes}")
         print(f"num_devices: {num_devices}")
         print(f"model_type: {model_type}")
         print(f"model_directory: {model_directory}")
         print(f"model_source: {model_source}")
-        print(f"detected_items: {detected_items}")
+        # print(f"detected_items: {detected_items}")
         print(f"server_IP: {server_IP}")
-        print(f"annotate_raw: {annotate_raw}")
-        print(f"annotate_violation: {annotate_violation}")
-        print(f"debug: {debug}")
-        print(f"record: {record}")
+        print(f"display: {self.display}")
+        print(f"save: {self.save}")
+        print(f"annotate_raw: {self.annotate_raw}")
+        print(f"annotate_violation: {self.annotate_violation}")
+        print(f"debug: {self.debug}")
+        print(f"record: {self.record}")
         print(f"adjust_brightness: {self.adjust_brightness}")
         print(f"save_labels: {self.save_labels}")
         print(f"use_nms: {self.use_nms}")
+        print(f"data_gather_only: {self.data_gather_only}")
         print("##################################\n\n")
 
         """
@@ -107,18 +114,16 @@ class InferenceSystem:
         return:
             None
         """
-        # Verbose mode True/False
-        self.debug = debug
 
         if server_IP == "local":
             self.server_IP = findLocalServer()
         else:
             self.server_IP = server_IP
 
-        cap_index = get_device_indices(quantity = num_devices)
+        cap_src = get_camera_src(quantity = num_devices)
 
         # Initialize the cameras
-        self.cams = [vStream(cap_index[i], i, video_res) for i in range(num_devices)]
+        self.cams = [vStream(cap_src[i], i, video_res, rotation_type=cam_rotation_type) for i in range(num_devices)]
 
         # Initialize the jetson's peripherals and GPIO pins
         self.jetson = Jetson()
@@ -135,12 +140,27 @@ class InferenceSystem:
         # Initialize the zone polygons - list of custom zone objects defined in Zone() at the bottom
         self.zone_polygons = zone_polygons
 
-        # Load the model
-        self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True,source=model_source, device='0') \
-                    if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
+        if model_type == 'custom':
+            self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True, source=model_source, device='0')
+            # self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/bestmaskv5.pt", force_reload=True, source=model_source, device='0')
+            print("Loaded custom models.")
+        else:
+            self.model = torch.hub.load(model_directory, model_name, device='0', force_reload=True)
+            # self.model2 = torch.hub.load(model_directory, model_name, device='0', force_reload=True)
+            print(f"Loaded standard models with model_name: {model_name}")
+
+        self.model.eval()
+        # self.model2.eval()
+
+        # # Load the model
+        # self.model = torch.hub.load(model_directory, model_type, path="custom_models/yolov5s.pt", force_reload=True,source=model_source, device='0') \
+        #             if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
+        # self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/bestmaskv5.pt", force_reload=True,source=model_source, device='0') \
+        #             if model_type == 'custom' else torch.hub.load(model_directory, model_name, device='0', force_reload=True)
         
-        # self.model.classes = [41,65,66,76]  # Set the desired class when using yolov5s for testing
-        self.model.eval() #set the model into eval mode
+        # # self.model.classes = [41,65,66,76]  # Set the desired class when using yolov5s for testing
+        # self.model.eval() #set the model into eval mode
+        # self.model2.eval() #set the model into eval mode
 
         # Create ByteTracker objects for each camera feed
         self.trackers = [sv.ByteTrack(match_thresh=BYTETRACKER_MATCH_THRESH) for i in range(num_devices)]
@@ -149,10 +169,7 @@ class InferenceSystem:
         self.frame_width = video_res[0]
         self.frame_height = video_res[1]
         self.frame_size = (self.frame_width, self.frame_height)
-        self.display = display
-        self.save = save
-        self.annotate_raw = annotate_raw
-        self.annotate_violation = annotate_violation
+
         self.consecutive_frames_cnt = [0 for i in range(len(self.cams))] # counter for #of frames taken after trigger event
         self.num_consecutive_frames = NUM_CONSECUTIVE_FRAMES # num_consecutive_frames that we want to window (to reduce jitter)
         self.camera_num = 0 # initialize the index of the video stream being processed
@@ -160,15 +177,7 @@ class InferenceSystem:
 
         # Set the zone params
         colors = sv.ColorPalette.default()
-        # self.zones = [
-        #     sv.PolygonZone(
-        #         polygon=zone_object.polygon,
-        #         frame_resolution_wh=self.frame_size,
-        #         triggering_position=sv.Position.CENTER
-        #     )
-        #     for zone_object
-        #     in zone_polygons
-        # ]
+
         self.zone_annotators = [
             sv.PolygonZoneAnnotator(
                 zone=zone.PolyZone,
@@ -183,9 +192,9 @@ class InferenceSystem:
         # Intialize the annotators
         self.box_annotator = sv.BoxAnnotator(thickness=1, text_thickness=1, text_scale=0.5)
         self.label_annotator = sv.LabelAnnotator(text_position=sv.Position.TOP_CENTER)
-        self.blur_annotator = sv.BlurAnnotator()
-        line_counter = sv.LineZone(start=LINE_START, end=LINE_END)
-        line_annotator = sv.LineZoneAnnotator(thickness=2, text_thickness=1, text_scale=0.5)
+        # self.blur_annotator = sv.BlurAnnotator()
+        # line_counter = sv.LineZone(start=LINE_START, end=LINE_END)
+        # line_annotator = sv.LineZoneAnnotator(thickness=2, text_thickness=1, text_scale=0.5)
 
         
 
@@ -194,14 +203,13 @@ class InferenceSystem:
         # self.save_dir.mkdir(parents=True, exist_ok=True)
 
         # Directories for each item to be detected
-        self.items = detected_items
+        # self.items = detected_items
 
         # I don't think we need this functionality anymore - ilya
         # self.item_dirs = [self.save_dir / item for item in detected_items]
         # [item_dir.mkdir(parents=True, exist_ok=True) for item_dir in self.item_dirs]
 
         # Decides if the last 5 seconds should be stored
-        self.record = record
         if self.record:
             self.recorder = Recorder(system=self)
         
@@ -230,29 +238,39 @@ class InferenceSystem:
         """
         print("Stopping detections and releasing cameras")
         for cam in self.cams:
-            cam.capture.release()
-
+            cam.stopAndRelease()
+        print("Released cameras")
         self.jetson.cleanup()
-
+        print("Cleaned up jetson GPIO")
         cv2.destroyAllWindows()
-        exit(1)
+        print("Closed all cv2 windows")
+        print("\nExiting...")
+        exit(0)
 
-    def save_frames(self,frame, detections, cam_idx):
+    def save_frames(self,frame, cam_idx,  detections=[] ):
         """
         Save the frames to the disk
         """
         try:
+            # Get current date and time in the format YYYYMMDD_HHMMSS
+            current_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
             cam_dir = Path(os.path.abspath(__file__)).parent / 'saved_frames' / f'cam{cam_idx}'
             cam_dir.mkdir(parents=True, exist_ok=True)
             item_count = get_highest_index(str(cam_dir)) + 1
-            cv2.imwrite(str(cam_dir / f'img_{item_count:04d}.jpg'), frame)
+            file_name = f'img_[{item_count:05d}]_{current_time}'
 
-            if self.save_labels:
+            img_name = file_name + '.jpg'
+            cv2.imwrite(str(cam_dir / img_name), frame)
+
+
+            if self.save_labels and len(detections):
                 label_dir = Path(os.path.abspath(__file__)).parent / 'saved_frames' / f'cam{cam_idx}_labels'
                 label_dir.mkdir(parents=True, exist_ok=True)
 
                 # write the labels in yolo format to the text file
-                with open(str(label_dir / f'img_{item_count:04d}.txt'), 'w') as file:
+                label_name = file_name + '.txt'
+                with open(str(label_dir / label_name), 'w') as file:
                     for i in range(len(detections['xyxy'])):
                         # Convert from xyxy to yolo format
                         x1, y1, x2, y2 = detections['xyxy'][i]
@@ -269,9 +287,11 @@ class InferenceSystem:
             print("Error saving frames. Error was:\n{e}")
             traceback.print_exc()
 
+    # @smart_inference_mode()
     def run(self, **kwargs) -> None:
         iou_thres = kwargs.get('iou_thres', 0.7)
         agnostic_nms = kwargs.get('agnostic_nms', False)
+        self.annotated_frame = None
 
         """
         param:
@@ -302,22 +322,103 @@ class InferenceSystem:
         # item_sets = [[present, absent] for present, absent in zip(self.present_indices, self.absent_indices)]
         
         class_names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
-        print(f"Class names: {class_names}")
+        print(f"Class names for model 1: {class_names}")
+        # class_names = self.model2.module.names if hasattr(self.model2, 'module') else self.model.names
+        # print(f"Class names for model 2: {class_names}")
 
         # Calculate FPS
         frame_count = 0
         start_time = time.time()
         fps=30
+        # Initialize second start time varibale to monitor every block of the code:
+        # start_time_performance = time.time_ns()
         # Initialize a timer to count the number of seconds since the last detection
         last_detection_time = time.time()
+        cam_read_start = time.time()
 
         while True:
+            
             try:
-                # Calculate FPS
+
+                
+                ### Saving a frame from each camera feed ###
+                self.captures = []
+                self.captures_HD = []
+                
+                frame_unavailable = False
+                avail_cnt=0
+                # Check if all cameras have a frame available
+                for cam in self.cams:
+                    if cam.isFrameAvailable():
+                        avail_cnt+=1
+
+
+                if time.time() - cam_read_start > 5:
+                    for cam in self.cams:
+                        if not cam.isFrameAvailable():
+                            print(f'Camera {cam.src} is not available. Reconnecting...')
+                            cam.reconnect()
+                    print("resetting cam read")
+                    cam_read_start = time.time()
+                    continue
+
+
+                # If yes, store the frames
+                if avail_cnt == len(self.cams):
+                    cam_read_start = time.time()
+
+
+                    for cam in self.cams:
+                        ret, frame, frame_HD = cam.getFrame()
+
+                        if not ret:
+                            frame_unavailable = True
+                            break
+
+                        self.captures.append(frame)
+                        self.captures_HD.append(frame_HD)
+
+                    # just in case there's a race condition and the frame is not available
+                    if len(self.captures) < len(self.cams):
+                        frame_unavailable = True
+                # If no, skip to the next iteration
+                else:
+                    frame_unavailable = True
+
+                if frame_unavailable:
+                    continue
+                # measure how long reading the frame took
+                # print("\n\n Reading frames took: ", (time.time_ns() - start_time_performance) // 1000)
+                
+                """
+                # measure time
+                # start_time_performance = time.time_ns()
+                # batched_data = torch.stack(self.captures).to('0')  # Stack data into a single batch
+                batched_data = torch.stack([torch.tensor(img) for img in self.captures]).to("cuda:0")
+                # Print shape:
+                # print("Batched data shape: ", batched_data.shape)
+                batched_data = batched_data.permute(0, 3, 1, 2)
+                # print("Batched data reshaped shape: ", batched_data.shape)
+                # measure time
+                # print("Stacking frames took: ", (time.time_ns() - start_time_performance) // 1000)
+                # start_time_performance = time.time_ns()
+
+
+                with torch.no_grad():
+                    output = self.model(batched_data)
+                    predictions = non_max_suppression(output, conf_thres=0.5, iou_thres=0.8)
+                # measure time
+                # print("Stacked model inference took: ", (time.time_ns() - start_time_performance) // 1000)
+                # print(predictions)
+                detections = [Detections.empty() for _ in range(len(self.captures))]
+                
+                """
+                ##### Calculate FPS ######
                 frame_count += 1
                 elapsed_time = time.time() - start_time
                 if elapsed_time > 5:  # Check every 5 seconds
                     fps = frame_count / elapsed_time
+                    print(f"FPS: {fps}")
                     # update self.trackers                    
                     # print(f"FPS: {fps}")
                     for cam_num in range(len(self.cams)):
@@ -325,58 +426,23 @@ class InferenceSystem:
                     # Reset frame count and time
                     frame_count = 0
                     start_time = time.time()
-
-                ### Saving a frame from each camera feed ###
-                self.captures = []
-                self.captures_HD = []
-                
-                frame_unavailable = False
-                for cam in self.cams:
-                    ret, frame, frame_HD = cam.getFrame()
-
-                    if not ret:
-                        frame_unavailable = True
-                        break
-
-                    self.captures.append(frame)
-                    self.captures_HD.append(frame_HD)
-                if len(self.captures) < len(self.cams):
-                    frame_unavailable = True
-            
-
-                if frame_unavailable:
-                    # if self.debug:
-                    #     print("\n\n##########################################################################")
-                    #     print("###########FRAME WAS UNAVAILABLE SO SKIPPING TO NEXT ITERATION ############")
-                    #     print("##########################################################################\n\n")
-
-                    continue
-
-                """
-                # batched_data = torch.stack(self.captures).to('0')  # Stack data into a single batch
-                batched_data = torch.stack([torch.tensor(img) for img in self.captures]).to("cuda:0")
-                # Print shape:
-                print("Batched data shape: ", batched_data.shape)
-                batched_data = batched_data.permute(0, 3, 1, 2)
-                print("Batched data reshaped shape: ", batched_data.shape)
+                ##### Calculate FPS ######
 
 
-                with torch.no_grad():
-                    output = self.model(batched_data)
-                    predictions = non_max_suppression(output, conf_thres=0.5, iou_thres=0.8)
 
-                print(predictions)
-                detections = [Detections.empty() for _ in range(len(self.captures))]
-                """
-                ##### Iterating over frames saved from each of the connected cameras #####
+
                 # If record flag raised, store frames 
                 if self.record:
                     self.recorder.store()
+
+
+
+                ##### Iterating over frames saved from each of the connected cameras #####
                 self.camera_num = 0
                 # Iterate over cameras, 1 frame from each  
                 for frame in self.captures:
+                    # total_time_performance_start = time.time_ns()
 
-                
                     #Print which camera we are processing
                     # Send through the model
                     # MAYBE REVERT????
@@ -385,27 +451,62 @@ class InferenceSystem:
                     if self.adjust_brightness:
                         detection_frame = adjust_color(detection_frame)
 
-                    results = self.model(detection_frame)
+                    # start_time_performance = time.time_ns()
+
+                    # results = self.model(detection_frame)
+
+
+                    if not self.data_gather_only:
+                        results = self.model(detection_frame)
+                        # print(f"Getting results for camera {self.camera_num} in first IF branch")
+                    elif self.camera_num == 0:
+                        # print(f"Getting results for camera {self.camera_num}")
+                        results = self.model(detection_frame)
+
+
+                    # if self.camera_num == 0:
+                    #     results = self.model(detection_frame)
+                    # else:
+                    #     results = self.model2(detection_frame)
+
+
+                    # measure time
+                    # print(f"Model inference took for cam{self.camera_num}: {(time.time_ns() - start_time_performance) // 1000}")
+                    # start_time_performance = time.time_ns()
 
                     # Convert the results to a numpy array in the format [x_min, y_min, x_max, y_max, confidence, class]
                     predictions = results.xyxy[0].cpu().numpy()
-
+                    #measeure time
+                    # print("Converting to numpy took: ", (time.time_ns() - start_time_performance) // 1000)
+                    # start_time_performance = time.time_ns()
                     # Define the confidence threshold
                     conf_thresh = CONFIDENCE_THRESH #0.4
 
                     # Filter out predictions with a confidence score below the threshold
                     filtered_predictions = predictions[predictions[:, 4] > conf_thresh]
+                    # measure time
+                    # print("Filtering took: ", (time.time_ns() - start_time_performance) // 1000)
+                    # start_time_performance = time.time_ns()
 
                     # Load the filtered predictions back into the results object
                     results.pred[0] = torch.tensor(filtered_predictions)
+                    # measure time
+                    # print("Loading back into results took: ", (time.time_ns() - start_time_performance) // 1000)
+                    # start_time_performance = time.time_ns()
                     
                     # Convert the detections to the Supervision-compatible format
                     self.detections = sv.Detections.from_yolov5(results)
+                    # measure time
+                    # print("Converting to Supervision format took: ", (time.time_ns() - start_time_performance) // 1000)
+                    # start_time_performance = time.time_ns()
                     
+
                     if self.use_nms:
                         # Run NMS to remove double detections
                         self.detections = self.detections.with_nms(threshold=iou_thres,  class_agnostic=agnostic_nms)
-
+                        # measure time
+                        # print("Running NMS took: ", (time.time_ns() - start_time_performance) // 1000)
+                    # start_time_performance = time.time_ns()
                     # If detections present, track them. Assign track_id
                     if len(self.detections) > 0:
                         # Reset the timer if there are detections
@@ -414,9 +515,9 @@ class InferenceSystem:
                         # Update bytetracker with the most recent fps rounded to the nearest integer
                         # self.trackers[self.camera_num].frame_rate = round(fps) #this doesn't work - bytetracker's logic makes no sense
 
-                        self.detections = self.ByteTracker_implementation(detections=self.detections)
+                        # self.detections = self.ByteTracker_implementation(detections=self.detections)
                         # print("###### Detections before ByteTrack: ", self.detections)
-                        # self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
+                        self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
                         # print("###### Detections after ByteTrack: ", self.detections)
                     else:
                         # put the detctions through the deafault bytetracker to keep it alive with frame numbers
@@ -429,6 +530,10 @@ class InferenceSystem:
                                 BaseTrack._count = 0 # We don't want the track_ids to get out of hand eventually
                             self.trackers = [sv.ByteTrack(match_thresh=BYTETRACKER_MATCH_THRESH) for i in range(len(self.cams))]
                             last_detection_time = time.time()
+                    # measure time
+                    # print("ByteTracker took: ", (time.time_ns() - start_time_performance) // 1000)
+                    # measure time with microsecond precision
+                    
 
         
                     """
@@ -461,8 +566,7 @@ class InferenceSystem:
                         self.annotated_frame = self.box_annotator.annotate(scene=self.annotated_frame, detections=self.detections, labels=labels)
                         for zone_annotator, zone in zip(self.zone_annotators, self.zone_polygons):
                             self.annotated_frame = zone_annotator.annotate(scene=self.annotated_frame) if zone.camera_id == self.camera_num else self.annotated_frame
-                    else:
-                        self.annotated_frame = frame.copy()
+                    
                         # self.annotated_frame = self.zone_annotators[self.camera_num].annotate(scene=self.annotated_frame)
 
                     # MAYBE USE THIS IN CONJUNCTION WITH SIALOI's CODE
@@ -491,11 +595,7 @@ class InferenceSystem:
                         self.trigger_action()
                         # After the image is sent to the server
                         if not self.detection_trigger_flag[self.camera_num]:
-                            # Display annotated frame with violations highlighted 
-                            if self.annotate_violation:
-                                # violation_frame = self.annotate_violations()
-                                # cv2.imshow("Violation Sent", self.frame_with_violation)
-                                pass
+
                             if self.record:
                                 # This will be the command for sending in the before and after footage of the violation
                                 self.recorder.send()
@@ -509,15 +609,19 @@ class InferenceSystem:
 
 
                     self.other_actions()
-                
                     # Display frame
                     if self.display:
                         fps_text = f"FPS: {fps:.2f}"  # Displaying with 2 decimal points for precision
-                        cv2.putText(self.annotated_frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-                        cv2.imshow(f'Camera {self.cams[self.camera_num].src}', self.annotated_frame)
-
+                        if self.annotate_raw:
+                            cv2.putText(self.annotated_frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                            cv2.imshow(f'Camera {self.cams[self.camera_num].src}', self.annotated_frame)
+                        else:
+                            cv2.putText(self.frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                            cv2.imshow(f'Camera {self.cams[self.camera_num].src}', self.frame)
                     # Update iteration index for the loop    
+                    # print(f"#### Total inference time for cam{self.camera_num}: {(time.time_ns() - total_time_performance_start) // 1000} microseconds")
                     self.camera_num += 1
+
 
             except Exception as e:
                 print("Frame unavailable, error was: ", e)

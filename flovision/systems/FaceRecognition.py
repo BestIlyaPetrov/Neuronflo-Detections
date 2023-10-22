@@ -13,7 +13,7 @@ import collections
 from pathlib import Path
 
 from ..bbox_gui import create_bounding_boxes, load_bounding_boxes
-from ..video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_device_indices
+from ..video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_camera_src
 from ..comms import sendImageToServer
 from ..utils import get_highest_index, findLocalServer
 from ..jetson import Jetson

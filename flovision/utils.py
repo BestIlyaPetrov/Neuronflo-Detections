@@ -59,7 +59,7 @@ def get_highest_index(folder_path):
     for filename in os.listdir(folder_path):
         if filename.endswith(".jpg"):
             try:
-                index = int(filename.split('img_')[-1].split('.jpg')[0])
+                index = int(filename.split(']')[0].split('[')[1])
                 if index > max_index:
                     max_index = index
             except Exception as e:#(ValueError, IndexError):
