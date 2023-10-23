@@ -72,6 +72,7 @@ class InferenceSystem:
         self.save_labels = kwargs.get('save_labels', False)
         self.use_nms = kwargs.get('use_nms', True)
         self.data_gather_only = kwargs.get('data_gather_only', False)
+        self.show_fps = kwargs.get('show_fps', False)
 
         print("\n\n##################################")
         print("PARAMETERS INSIDE INFERENCE.PY\n")
@@ -94,6 +95,7 @@ class InferenceSystem:
         print(f"save_labels: {self.save_labels}")
         print(f"use_nms: {self.use_nms}")
         print(f"data_gather_only: {self.data_gather_only}")
+        print(f"show_fps: {self.show_fps}")
         print("##################################\n\n")
 
         """
@@ -418,7 +420,8 @@ class InferenceSystem:
                 elapsed_time = time.time() - start_time
                 if elapsed_time > 5:  # Check every 5 seconds
                     fps = frame_count / elapsed_time
-                    print(f"FPS: {fps}")
+                    if self.show_fps:
+                        print(f"FPS: {fps}")
                     # update self.trackers                    
                     # print(f"FPS: {fps}")
                     for cam_num in range(len(self.cams)):
@@ -613,11 +616,13 @@ class InferenceSystem:
                     if self.display:
                         fps_text = f"FPS: {fps:.2f}"  # Displaying with 2 decimal points for precision
                         if self.annotate_raw:
-                            cv2.putText(self.annotated_frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                            if self.show_fps:
+                                cv2.putText(self.annotated_frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
                             cv2.imshow(f'Camera {self.cams[self.camera_num].src}', self.annotated_frame)
                         else:
-                            cv2.putText(self.frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-                            cv2.imshow(f'Camera {self.cams[self.camera_num].src}', self.frame)
+                            if self.show_fps:
+                                cv2.putText(frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                            cv2.imshow(f'Camera {self.cams[self.camera_num].src}', frame)
                     # Update iteration index for the loop    
                     # print(f"#### Total inference time for cam{self.camera_num}: {(time.time_ns() - total_time_performance_start) // 1000} microseconds")
                     self.camera_num += 1

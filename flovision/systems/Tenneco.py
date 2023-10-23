@@ -282,7 +282,7 @@ class TennecoInferenceSystem(InferenceSystem):
         y_min = max(0, y_min - 10)
         x_max = min(out_w, x_max + 10)
         y_max = min(out_h, y_max + 10)
-        print(f"FINAL: x_min = {x_min}, y_min = {y_min}, x_max = {x_max}, y_max = {y_max}, box_color = {box_color}, line_thickness = {line_thickness}")
+        # print(f"FINAL: x_min = {x_min}, y_min = {y_min}, x_max = {x_max}, y_max = {y_max}, box_color = {box_color}, line_thickness = {line_thickness}")
       
 
         # Draw the rectangle around the detected object
@@ -463,7 +463,7 @@ class TennecoInferenceSystem(InferenceSystem):
                     self.averaged_and_filtered_violations[self.camera_num] = self.process_violations_array_top_cam(self.violations_array[self.camera_num])
                     # In case there's overlap and there's more than 1 person, pick out the frame with most detections (yet send the image of least blurry one still)
                     if len(self.averaged_and_filtered_violations[self.camera_num]) > 0:
-                        self.violation_to_server[self.camera_num] = max(self.averaged_and_filtered_violations[self.camera_num].reverse(), key=len)# Find the longest sublist in the filtered result
+                        self.violation_to_server[self.camera_num] = max(self.averaged_and_filtered_violations[self.camera_num], key=len)# Find the longest sublist in the filtered result
                         if self.debug:
                             print(f"\n %% len(self.averaged_and_filtered_violations[{self.camera_num}]) = {len(self.averaged_and_filtered_violations[self.camera_num])}\n")
                     else:
@@ -476,7 +476,7 @@ class TennecoInferenceSystem(InferenceSystem):
                     self.averaged_and_filtered_violations[self.camera_num] = self.process_violations_array_bottom_cam(self.violations_array[self.camera_num])
                     if len(self.averaged_and_filtered_violations[self.camera_num]) > 0:
                         # FIX THIS LOGIC to pick least blurry, but only the one with violations
-                        self.violation_to_server[self.camera_num] = max(self.averaged_and_filtered_violations[self.camera_num].reverse(), key=len)# Find the longest sublist in the filtered result
+                        self.violation_to_server[self.camera_num] = max(self.averaged_and_filtered_violations[self.camera_num], key=len)# Find the longest sublist in the filtered result
 
                         #print the len:
                         if self.debug:

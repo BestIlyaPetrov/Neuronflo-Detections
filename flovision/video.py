@@ -26,8 +26,7 @@ def upscale_coordinates(x_min, y_min, x_max, y_max, input_resolution, output_res
     upscaled_x_max = int(round(x_max * width_scale))
     upscaled_y_max = int(round(y_max * height_scale))
     # print both coords
-    print("INPUT COORDS:", x_min, y_min, x_max, y_max)
-    print("UPSCALED COORDS:", upscaled_x_min, upscaled_y_min, upscaled_x_max, upscaled_y_max)
+
 
     return upscaled_x_min, upscaled_y_min, upscaled_x_max, upscaled_y_max
 
@@ -126,34 +125,34 @@ def get_camera_src(quantity=1):
 
     return devices
 
-def get_device_indices(quantity = 1):
-    # Determine the two sources to use for cameras:
-    # Find all available video devices
-    # devices = glob.glob('/dev/video*')
-    devices = []
-    # port = 554
-    # ip = "192.168.2.51"
-    # devices.append(f'rtsp://{ip}:{port}/stream2')
-    # ip = "192.168.2.50"
-    # devices.append(f'rtsp://{ip}:{port}/stream2')
-    # return devices
+# def get_device_indices(quantity = 1):
+#     # Determine the two sources to use for cameras:
+#     # Find all available video devices
+#     # devices = glob.glob('/dev/video*')
+#     devices = []
+#     # port = 554
+#     # ip = "192.168.2.51"
+#     # devices.append(f'rtsp://{ip}:{port}/stream2')
+#     # ip = "192.168.2.50"
+#     # devices.append(f'rtsp://{ip}:{port}/stream2')
+#     # return devices
 
-    # Sort the device names in ascending order
-    devices.sort()
-    # Use the first device as the capture index
-    # cap_index = [0,1] #default values aka /dev/video0 and /dev/video1
-    # If there are no devices available, raise an error
-    if not devices:
-        raise ValueError('No video devices found')
-    elif len(devices) < quantity:
-        raise ValueError(f'Not enough cameras connected. Only found {len(devices)}, but need {quantity}')
-    # Otherwise, use the lowest available indexes
-    else:
-        cap_index = []
-        #Creating an array of camera device indices. Aka if we find /dev/video0 and /dev/video2, cap_index == [0,2]
-        for i in range(0, quantity):
-            cap_index.append(int(devices[i][-1]))
-        return cap_index
+#     # Sort the device names in ascending order
+#     devices.sort()
+#     # Use the first device as the capture index
+#     # cap_index = [0,1] #default values aka /dev/video0 and /dev/video1
+#     # If there are no devices available, raise an error
+#     if not devices:
+#         raise ValueError('No video devices found')
+#     elif len(devices) < quantity:
+#         raise ValueError(f'Not enough cameras connected. Only found {len(devices)}, but need {quantity}')
+#     # Otherwise, use the lowest available indexes
+#     else:
+#         cap_index = []
+#         #Creating an array of camera device indices. Aka if we find /dev/video0 and /dev/video2, cap_index == [0,2]
+#         for i in range(0, quantity):
+#             cap_index.append(int(devices[i][-1]))
+#         return cap_index
 
 def draw_border(frame, compliant, border_width=5):
     """
@@ -337,7 +336,7 @@ class vStream:
                 try:
                     getframe = self.capture.read()
                     if self.rotation_type is None:
-                        self.frame = cv2.rotate(getframe[1])
+                        self.frame = getframe[1]
                     else: 
                         self.frame = cv2.rotate(getframe[1],self.rotation_type)
 

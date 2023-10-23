@@ -38,7 +38,8 @@ def main(
     annotate_violation = True,
     debug = False,
     record = False,
-    data_gather_only = False
+    data_gather_only = False,
+    show_fps = False
     ):
 
     def sigterm_handler(signo, frame):
@@ -76,7 +77,8 @@ def main(
             debug=debug,
             record=record,
             data_gather_only=data_gather_only,
-            cam_rotation_type=cv2.ROTATE_90_COUNTERCLOCKWISE
+            cam_rotation_type=cv2.ROTATE_90_COUNTERCLOCKWISE,
+            show_fps=show_fps
         )
             
             
@@ -133,6 +135,7 @@ def parse_options():
         parser.add_argument('--debug', action='store_true', help='verbose mode')
         parser.add_argument('--data-gather-only', action='store_true', help='verbose mode')
         parser.add_argument('--record', action='store_true', help='records the last 5 seconds')
+        parser.add_argument('--show-fps', action='store_true', help='show fps')
 
 
         options = parser.parse_args()
