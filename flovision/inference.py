@@ -64,15 +64,16 @@ class InferenceSystem:
         server_IP = kwargs.get('server_IP', 'local')
         self.display = kwargs.get('display')
         self.save = kwargs.get('save')
+        self.save_labels = kwargs.get('save_labels', False)
         self.annotate_raw = kwargs.get('annotate_raw', False)
         self.annotate_violation = kwargs.get('annotate_violation', False)
         self.debug = kwargs.get('debug', False)
         self.record = kwargs.get('record', False)
         self.adjust_brightness = kwargs.get('adjust_brightness', False)
-        self.save_labels = kwargs.get('save_labels', False)
         self.use_nms = kwargs.get('use_nms', True)
         self.data_gather_only = kwargs.get('data_gather_only', False)
         self.show_fps = kwargs.get('show_fps', False)
+        self.send_to_portal = kwargs.get('send_to_portal', False)
 
         print("\n\n##################################")
         print("PARAMETERS INSIDE INFERENCE.PY\n")
@@ -87,6 +88,7 @@ class InferenceSystem:
         print(f"server_IP: {server_IP}")
         print(f"display: {self.display}")
         print(f"save: {self.save}")
+        print(f"save_labels: {self.save_labels}")
         print(f"annotate_raw: {self.annotate_raw}")
         print(f"annotate_violation: {self.annotate_violation}")
         print(f"debug: {self.debug}")
@@ -96,6 +98,7 @@ class InferenceSystem:
         print(f"use_nms: {self.use_nms}")
         print(f"data_gather_only: {self.data_gather_only}")
         print(f"show_fps: {self.show_fps}")
+        print(f"send_to_portal: {self.send_to_portal}")
         print("##################################\n\n")
 
         """
@@ -124,8 +127,15 @@ class InferenceSystem:
 
         cap_src = get_camera_src(quantity = num_devices)
 
+        
         # Initialize the cameras
-        self.cams = [vStream(cap_src[i], i, video_res, rotation_type=cam_rotation_type) for i in range(num_devices)]
+        crop_coordinates = []
+        #cam0
+        crop_coordinates.append((404.0, 1044.0, 77.0, 717.0))
+        #cam1
+        crop_coordinates.append((549.0, 1189.0, 76.0, 716.0))
+
+        self.cams = [vStream(cap_src[i], i, video_res, crop_coordinates[i], rotation_type=cam_rotation_type) for i in range(num_devices)]
 
         # Initialize the jetson's peripherals and GPIO pins
         self.jetson = Jetson()
@@ -143,16 +153,17 @@ class InferenceSystem:
         self.zone_polygons = zone_polygons
 
         if model_type == 'custom':
-            self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True, source=model_source, device='0')
-            # self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/bestmaskv5.pt", force_reload=True, source=model_source, device='0')
+            # self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True, source=model_source, device='0')
+            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_4.4k.pt", force_reload=True, source=model_source, device='0')
+            self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam1_N_4.4k_speedy.pt", force_reload=True, source=model_source, device='0')
             print("Loaded custom models.")
         else:
             self.model = torch.hub.load(model_directory, model_name, device='0', force_reload=True)
-            # self.model2 = torch.hub.load(model_directory, model_name, device='0', force_reload=True)
+            self.model2 = torch.hub.load(model_directory, model_name, device='0', force_reload=True)
             print(f"Loaded standard models with model_name: {model_name}")
 
         self.model.eval()
-        # self.model2.eval()
+        self.model2.eval()
 
         # # Load the model
         # self.model = torch.hub.load(model_directory, model_type, path="custom_models/yolov5s.pt", force_reload=True,source=model_source, device='0') \
@@ -198,18 +209,7 @@ class InferenceSystem:
         # line_counter = sv.LineZone(start=LINE_START, end=LINE_END)
         # line_annotator = sv.LineZoneAnnotator(thickness=2, text_thickness=1, text_scale=0.5)
 
-        
 
-        # Directory to save the frames - for training
-        # self.save_dir = Path.cwd().parent / 'saved_frames'
-        # self.save_dir.mkdir(parents=True, exist_ok=True)
-
-        # Directories for each item to be detected
-        # self.items = detected_items
-
-        # I don't think we need this functionality anymore - ilya
-        # self.item_dirs = [self.save_dir / item for item in detected_items]
-        # [item_dir.mkdir(parents=True, exist_ok=True) for item_dir in self.item_dirs]
 
         # Decides if the last 5 seconds should be stored
         if self.record:
@@ -223,7 +223,6 @@ class InferenceSystem:
         if len(detections) != 0:
             new_detections = self.trackers[self.camera_num].update_with_detections(detections)
             #Print both to compare
-            
             #Sort both detections and new_detections based on confidence scores
             sorted_original_indices = np.argsort(detections.confidence)
             sorted_new_indices = np.argsort(new_detections.confidence)
@@ -249,44 +248,60 @@ class InferenceSystem:
         print("\nExiting...")
         exit(0)
 
-    def save_frames(self,frame, cam_idx,  detections=[] ):
+    def save_frames(self, frame, cam_idx=0,  detections=[], save_type='raw' ):
         """
         Save the frames to the disk
         """
         try:
-            # Get current date and time in the format YYYYMMDD_HHMMSS
-            current_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            if save_type == 'raw':
+                # Get current date and time in the format YYYYMMDD_HHMMSS
+                current_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
-            cam_dir = Path(os.path.abspath(__file__)).parent / 'saved_frames' / f'cam{cam_idx}'
-            cam_dir.mkdir(parents=True, exist_ok=True)
-            item_count = get_highest_index(str(cam_dir)) + 1
-            file_name = f'img_[{item_count:05d}]_{current_time}'
+                cam_dir = Path(os.path.abspath(__file__)).parent / 'saved_frames' / f'cam{cam_idx}'
+                cam_dir.mkdir(parents=True, exist_ok=True)
+                item_count = get_highest_index(str(cam_dir)) + 1
+                file_name = f'img_[{item_count:05d}]_{current_time}'
 
-            img_name = file_name + '.jpg'
-            cv2.imwrite(str(cam_dir / img_name), frame)
+                img_name = file_name + '.jpg'
+                cv2.imwrite(str(cam_dir / img_name), frame)
 
 
-            if self.save_labels and len(detections):
-                label_dir = Path(os.path.abspath(__file__)).parent / 'saved_frames' / f'cam{cam_idx}_labels'
-                label_dir.mkdir(parents=True, exist_ok=True)
+                if self.save_labels and len(detections):
+                    print(f"THESE ARE THE DETCTIONS I'M TRYING TO SAVE: {detections}")
+                    label_dir = Path(os.path.abspath(__file__)).parent / 'saved_frames' / f'cam{cam_idx}_labels'
+                    label_dir.mkdir(parents=True, exist_ok=True)
 
-                # write the labels in yolo format to the text file
-                label_name = file_name + '.txt'
-                with open(str(label_dir / label_name), 'w') as file:
-                    for i in range(len(detections['xyxy'])):
-                        # Convert from xyxy to yolo format
-                        x1, y1, x2, y2 = detections['xyxy'][i]
-                        x_center = (x1 + x2) / 2 / self.frame_width
-                        y_center = (y1 + y2) / 2 / self.frame_height
-                        width = (x2 - x1) / self.frame_width
-                        height = (y2 - y1) / self.frame_height
-                        
-                        class_id = detections['class_id'][i]
-                        
-                        file.write(f"{class_id} {x_center} {y_center} {width} {height}\n")
+                    # write the labels in yolo format to the text file
+                    label_name = file_name + '.txt'
+                    with open(str(label_dir / label_name), 'w') as file:
+                        # for i in range(len(detections[0])):
+                        for detection in detections:
+                            # Convert from xyxy to yolo format
+                            x1, y1, x2, y2 = detection[0]
+                            x_center = (x1 + x2) / 2 / frame.shape[1]
+                            y_center = (y1 + y2) / 2 / frame.shape[0]
+                            width = (x2 - x1) / frame.shape[1]
+                            height = (y2 - y1) / frame.shape[0]
+                            
+                            class_id = detection[-2]
+                            print(f"Class id: {class_id}")
+                            print(f'writing to file: {class_id} {x_center} {y_center} {width} {height}')
+                            
+                            file.write(f"{class_id} {x_center} {y_center} {width} {height}\n")
+            elif save_type == 'annotated':
+                # Get current date and time in the format YYYYMMDD_HHMMSS
+                current_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+                cam_dir = Path(os.path.abspath(__file__)).parent / 'saved_frames' / f'annotated'
+                cam_dir.mkdir(parents=True, exist_ok=True)
+                item_count = get_highest_index(str(cam_dir)) + 1
+                file_name = f'img_[{item_count:05d}]_{current_time}'
+
+                img_name = file_name + '.jpg'
+                cv2.imwrite(str(cam_dir / img_name), frame)
 
         except Exception as e:
-            print("Error saving frames. Error was:\n{e}")
+            print(f"Error saving frames. Error was:\n {e}")
             traceback.print_exc()
 
     # @smart_inference_mode()
@@ -371,14 +386,14 @@ class InferenceSystem:
 
 
                     for cam in self.cams:
-                        ret, frame, frame_HD = cam.getFrame()
+                        ret, frame = cam.getFrame()
 
                         if not ret:
                             frame_unavailable = True
                             break
 
                         self.captures.append(frame)
-                        self.captures_HD.append(frame_HD)
+                        # self.captures_HD.append(frame_HD)
 
                     # just in case there's a race condition and the frame is not available
                     if len(self.captures) < len(self.cams):
@@ -448,7 +463,6 @@ class InferenceSystem:
 
                     #Print which camera we are processing
                     # Send through the model
-                    # MAYBE REVERT????
                     # detection_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     detection_frame = frame
                     if self.adjust_brightness:
@@ -460,17 +474,17 @@ class InferenceSystem:
 
 
                     if not self.data_gather_only:
-                        results = self.model(detection_frame)
+                        # results = self.model(detection_frame)
+                        if self.camera_num == 0:
+                            results = self.model(detection_frame)
+                        else:
+                            results = self.model2(detection_frame)
                         # print(f"Getting results for camera {self.camera_num} in first IF branch")
                     elif self.camera_num == 0:
                         # print(f"Getting results for camera {self.camera_num}")
                         results = self.model(detection_frame)
 
 
-                    # if self.camera_num == 0:
-                    #     results = self.model(detection_frame)
-                    # else:
-                    #     results = self.model2(detection_frame)
 
 
                     # measure time

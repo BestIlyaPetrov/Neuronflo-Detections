@@ -273,7 +273,7 @@ class vStream:
 
 
 class vStream:
-    def __init__(self, src, cam_num, resolution, rotation_type=None):
+    def __init__(self, src, cam_num, resolution, crop_coordinates, rotation_type=None):
         print("Opening camera at link: ", src)
         self.rotation_type = rotation_type
         self.inference_width = resolution[0]
@@ -285,6 +285,7 @@ class vStream:
         self.frame_resized= None
         self.running = False
         self.kill_update_loop = False
+        self.crop_coordinates = crop_coordinates
 
         if self.rotation_type not in [cv2.ROTATE_90_CLOCKWISE,cv2.ROTATE_90_COUNTERCLOCKWISE,cv2.ROTATE_180]:
             self.rotation_type = None
@@ -331,6 +332,7 @@ class vStream:
         fps_cnt = 0 
         cnt=0
         start_time = time.time()
+        y1, y2, x1, x2 = self.crop_coordinates
         while True:
             if self.running:
                 try:
@@ -340,7 +342,10 @@ class vStream:
                     else: 
                         self.frame = cv2.rotate(getframe[1],self.rotation_type)
 
-                    self.frame_resized = cv2.resize(self.frame, (self.inference_width, self.inference_height))
+                    # self.frame_resized = cv2.resize(self.frame, (self.inference_width, self.inference_height))
+                    
+                    self.frame_resized = self.frame[int(y1):int(y2), int(x1):int(x2)]
+
                     self.new_frame_available = True
                     # fps_cnt += 1
                     # if cnt % 10 == 0:
@@ -364,12 +369,20 @@ class vStream:
 
     def getFrame(self):
         if self.frame_resized is None:
-            return (False, self.frame_resized, self.frame)
+            return (False, self.frame_resized)
         if self.new_frame_available:
             self.new_frame_available = False
-            return (True, self.frame_resized, self.frame)
+            return (True, self.frame_resized)
         else:
-            return (False, self.frame_resized, self.frame)
+            return (False, self.frame_resized)
+    # def getFrame(self):
+    #     if self.frame_resized is None:
+    #         return (False, self.frame_resized, self.frame)
+    #     if self.new_frame_available:
+    #         self.new_frame_available = False
+    #         return (True, self.frame_resized, self.frame)
+    #     else:
+    #         return (False, self.frame_resized, self.frame)
         
     def isFrameAvailable(self):
         return self.new_frame_available

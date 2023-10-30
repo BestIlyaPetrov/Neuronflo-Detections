@@ -274,7 +274,7 @@ class TennecoInferenceSystem(InferenceSystem):
         out_h = frame.shape[0]
         output_resolution = (out_w, out_h)
         x_min, y_min, x_max, y_max = [int(round(coord)) for coord in violation['bbox']]
-        x_min, y_min, x_max, y_max = upscale_coordinates(x_min, y_min, x_max, y_max, input_resolution, output_resolution)
+        # x_min, y_min, x_max, y_max = upscale_coordinates(x_min, y_min, x_max, y_max, input_resolution, output_resolution)
 
 
         # Pad the bbx by 10px on each side, but make sure it doesn't go out of the frame
@@ -393,7 +393,7 @@ class TennecoInferenceSystem(InferenceSystem):
         # The following 3 arrays are appened in parallel
 
         # Append an image from self.camera_num source to the array for least blurry choice
-        self.array_for_frames[self.camera_num][self.consecutive_frames_cnt[self.camera_num]] = self.captures_HD[self.camera_num]
+        self.array_for_frames[self.camera_num][self.consecutive_frames_cnt[self.camera_num]] = self.captures[self.camera_num]
         # self.array_for_frames[self.camera_num][self.consecutive_frames_cnt[self.camera_num]] = self.annotated_frame
         # self.array_for_frames is an array of arrays of images
 
@@ -499,7 +499,11 @@ class TennecoInferenceSystem(InferenceSystem):
 
                 if all(self.ready_to_send) and any(len(cam_violations) > 0 for cam_violations in self.violation_to_server[TOP_CAMERA_INDX]):
                     self.system_send()
-
+                    
+                    if self.save:
+                        print("##### Saving raw frames to disk #####")
+                        # Syntax:  save_frames(frame, camera_num, detected_violations, save_type='raw/anotated')
+                        [self.save_frames(frame,  i, detections, save_type='raw') for i in range(len(self.array_for_frames)) for frame,detections in zip(self.array_for_frames[i], self.detections_array[i])]
             # Now reset the arrays if both are done collecting the N frames
             if all(self.ready_to_send):
                 if self.data_gather_only:
@@ -565,9 +569,9 @@ class TennecoInferenceSystem(InferenceSystem):
         compliance_status = False if not (goggle_status and shoe_status) else True
 
         # Save the image locally for further model retraining
-        if self.save:
+        # if self.save:
 
-            self.save_frames(frame, self.camera_num)
+        #     self.save_frames(frame, self.camera_num)
 
         # Annotate the violations #Needs to be tested
         # self.frame_with_violation = self.annotate_violations()
@@ -622,6 +626,9 @@ class TennecoInferenceSystem(InferenceSystem):
 
 
         frame_to_send = np.hstack((frames_to_send[TOP_CAMERA_INDX], frames_to_send[BOTTOM_CAMERA_INDX]))
+        if not self.send_to_portal:
+            print("##### Saving annotated frames to disk #####")
+            self.save_frames(frame_to_send, save_type='annotated')
         
 
         # right before sending, set all involved track_ids to "EXITING" status
@@ -631,7 +638,8 @@ class TennecoInferenceSystem(InferenceSystem):
             self.tracker_id_side_entered[TOP_CAMERA_INDX][violation["track_id"]][0] = "EXITING"
         
         link = "api/event_update"
-        sendImageToServer(frame_to_send, data, self.server_IP, link)
+        if self.send_to_portal:
+            sendImageToServer(frame_to_send, data, self.server_IP, link)
 
 class FrameProcessing():
     # A class for processing detections found in a frame  

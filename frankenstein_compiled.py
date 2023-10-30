@@ -5,7 +5,8 @@ import argparse
 import signal, sys
 
 # VIDEO RESOLUTION
-video_res = [384, 640]
+# video_res = [384, 640]
+video_res = [640, 640]
 # video_res = [320, 192]
 
 # NMS paparms
@@ -32,6 +33,7 @@ def main(
     weights='custom_models/bestmaskv5.pt',  # model path or triton URL,
     display_video = False,
     save_frames = False,
+    save_labels = False,
     new_boxes = False,
     server_IP = 'local',
     annotate_raw = False,
@@ -39,7 +41,8 @@ def main(
     debug = False,
     record = False,
     data_gather_only = False,
-    show_fps = False
+    show_fps = False,
+    send_to_portal = False
     ):
 
     def sigterm_handler(signo, frame):
@@ -65,6 +68,7 @@ def main(
             # border_thickness = border_thickness, # we are not drawing borders anymore
             display = display_video,
             save = save_frames,
+            save_labels = save_labels,
             bboxes = new_boxes,
             num_devices=2,
             model_type="custom",
@@ -78,7 +82,8 @@ def main(
             record=record,
             data_gather_only=data_gather_only,
             cam_rotation_type=cv2.ROTATE_90_COUNTERCLOCKWISE,
-            show_fps=show_fps
+            show_fps=show_fps,
+            send_to_portal=send_to_portal
         )
             
             
@@ -127,6 +132,7 @@ def parse_options():
         parser = argparse.ArgumentParser()
         parser.add_argument('--display-video', action='store_true', help='show video feed')
         parser.add_argument('--save-frames', action='store_true', help='save detected frames')
+        parser.add_argument('--save-labels', action='store_true', help='save detections')
         parser.add_argument('--new-boxes', action='store_true', help='create new bounding boxes')
         parser.add_argument('--weights', type=str, default='custom_models/bestmaskv5.pt', help='model path')
         parser.add_argument('--server_IP', type=str, default='local', help='IP of the server the images are being sent to')
@@ -136,6 +142,7 @@ def parse_options():
         parser.add_argument('--data-gather-only', action='store_true', help='verbose mode')
         parser.add_argument('--record', action='store_true', help='records the last 5 seconds')
         parser.add_argument('--show-fps', action='store_true', help='show fps')
+        parser.add_argument('--send-to-portal', action='store_true', help='send data to portal')
 
 
         options = parser.parse_args()
