@@ -147,6 +147,7 @@ class InferenceSystem:
         for i, cam in enumerate(self.cams):
             coordinates_set = func(cam)
             for j, coordinates in enumerate(coordinates_set):
+                print(f"Created zone (i, j, coordinates, tuple(video_res) = {i}, {j}, {coordinates}, {tuple(video_res)}")
                 zone_polygons.append(Zone(i, j, coordinates, tuple(video_res)))
         
         # Initialize the zone polygons - list of custom zone objects defined in Zone() at the bottom
@@ -154,7 +155,7 @@ class InferenceSystem:
 
         if model_type == 'custom':
             # self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True, source=model_source, device='0')
-            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_4.4k.pt", force_reload=True, source=model_source, device='0')
+            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_4.4k_speedy.pt", force_reload=True, source=model_source, device='0')
             self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam1_N_4.4k_speedy.pt", force_reload=True, source=model_source, device='0')
             print("Loaded custom models.")
         else:
@@ -340,8 +341,8 @@ class InferenceSystem:
         
         class_names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
         print(f"Class names for model 1: {class_names}")
-        # class_names = self.model2.module.names if hasattr(self.model2, 'module') else self.model.names
-        # print(f"Class names for model 2: {class_names}")
+        class_names = self.model2.module.names if hasattr(self.model2, 'module') else self.model2.names
+        print(f"Class names for model 2: {class_names}")
 
         # Calculate FPS
         frame_count = 0
@@ -463,8 +464,8 @@ class InferenceSystem:
 
                     #Print which camera we are processing
                     # Send through the model
-                    # detection_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    detection_frame = frame
+                    detection_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    # detection_frame = frame
                     if self.adjust_brightness:
                         detection_frame = adjust_color(detection_frame)
 
