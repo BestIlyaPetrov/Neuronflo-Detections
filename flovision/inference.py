@@ -36,7 +36,7 @@ BYTETRACKER_MATCH_THRESH = 0.95
 CONFIDENCE_THRESH = 0.2
 
 # Run method params
-NUM_CONSECUTIVE_FRAMES = 3
+NUM_CONSECUTIVE_FRAMES = 2
 TRACK_ID_KEEP_ALIVE = 1 # minutes
 DROP_BYTETRACK_AFTER = 5 #seconds
 BYTETRACKER_FULL_RESET_TIMEOUT = 5 #minutes
@@ -44,7 +44,8 @@ BYTETRACKER_FULL_RESET_TIMEOUT = 5 #minutes
 # #Unused at the moment
 # LINE_START = sv.Point(320, 0)
 # LINE_END = sv.Point(320, 480)
-
+TOP_CAMERA_INDX = 0
+BOTTOM_CAMERA_INDX = 1
 
 class InferenceSystem:
     """
@@ -121,7 +122,8 @@ class InferenceSystem:
         """
 
         if server_IP == "local":
-            self.server_IP = findLocalServer()
+            self.server_IP = '192.168.177.37'
+            # self.server_IP = findLocalServer()
         else:
             self.server_IP = server_IP
 
@@ -155,8 +157,9 @@ class InferenceSystem:
 
         if model_type == 'custom':
             # self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True, source=model_source, device='0')
-            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_4.4k_speedy.pt", force_reload=True, source=model_source, device='0')
-            self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam1_N_4.4k_speedy.pt", force_reload=True, source=model_source, device='0')
+            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_4.6k_speedy.pt", force_reload=True, source=model_source, device='0')
+            self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam1_N_4.6k_speedy.pt", force_reload=True, source=model_source, device='0')
+            # self.model3 = torch.hub.load(model_directory, model_type, path="custom_models/yolov5n.pt", force_reload=True, source=model_source, device='0')
             print("Loaded custom models.")
         else:
             self.model = torch.hub.load(model_directory, model_name, device='0', force_reload=True)
@@ -165,6 +168,9 @@ class InferenceSystem:
 
         self.model.eval()
         self.model2.eval()
+
+        # self.model3.classes = [0]
+        # self.model3.eval()
 
         # # Load the model
         # self.model = torch.hub.load(model_directory, model_type, path="custom_models/yolov5s.pt", force_reload=True,source=model_source, device='0') \
@@ -343,6 +349,8 @@ class InferenceSystem:
         print(f"Class names for model 1: {class_names}")
         class_names = self.model2.module.names if hasattr(self.model2, 'module') else self.model2.names
         print(f"Class names for model 2: {class_names}")
+        # class_names = self.model3.module.names if hasattr(self.model3, 'module') else self.model3.names
+        # print(f"Class names for model 3: {class_names}")
 
         # Calculate FPS
         frame_count = 0
@@ -478,8 +486,10 @@ class InferenceSystem:
                         # results = self.model(detection_frame)
                         if self.camera_num == 0:
                             results = self.model(detection_frame)
-                        else:
+                        elif self.camera_num == 1 and self.detection_trigger_flag[BOTTOM_CAMERA_INDX]:
                             results = self.model2(detection_frame)
+                        else:
+                            continue
                         # print(f"Getting results for camera {self.camera_num} in first IF branch")
                     elif self.camera_num == 0:
                         # print(f"Getting results for camera {self.camera_num}")
@@ -527,16 +537,19 @@ class InferenceSystem:
                     # start_time_performance = time.time_ns()
                     # If detections present, track them. Assign track_id
                     if len(self.detections) > 0:
+                        print(f'detected smth at cam{self.camera_num}')
+                        current_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                        print(f"CURRENT TIME: {current_time}")
                         # Reset the timer if there are detections
                         last_detection_time = time.time()
                         
                         # Update bytetracker with the most recent fps rounded to the nearest integer
                         # self.trackers[self.camera_num].frame_rate = round(fps) #this doesn't work - bytetracker's logic makes no sense
 
-                        # self.detections = self.ByteTracker_implementation(detections=self.detections)
-                        # print("###### Detections before ByteTrack: ", self.detections)
-                        self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
-                        # print("###### Detections after ByteTrack: ", self.detections)
+                        print("###### Detections before ByteTrack: ", self.detections)
+                        self.detections = self.ByteTracker_implementation(detections=self.detections)
+                        # self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
+                        print("###### Detections after ByteTrack: ", self.detections)
                     else:
                         # put the detctions through the deafault bytetracker to keep it alive with frame numbers
                         self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
@@ -696,7 +709,7 @@ class Zone():
         self.PolyZone = sv.PolygonZone(
                 polygon=polygon,
                 frame_resolution_wh=frame_size,
-                triggering_position=sv.Position.CENTER)
+                triggering_position=sv.Position.TOP_CENTER)
         self.last_count = 0
 
 class Violation():

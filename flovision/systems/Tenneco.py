@@ -189,7 +189,7 @@ class TennecoInferenceSystem(InferenceSystem):
             # Find the avg detection between (goggles/no_goggles) and set every detection to that class_id
             for detection in sublist:
                 track_id = detection['track_id']
-                if track_id_counts[track_id] > num_sublists // 2:
+                if track_id_counts[track_id] >= num_sublists // 2:
                     # Calculate the average class_id for this track_id
                     most_common_class_id = Counter(class_ids_per_track[track_id]).most_common(1)[0][0]
                     # Update the detection with the newly found class_id that is prevalent (most_common) in the array
@@ -235,13 +235,68 @@ class TennecoInferenceSystem(InferenceSystem):
                     bool_trigger = True
                 zone.last_count = zone.PolyZone.current_count
 
+        # elif self.camera_num == BOTTOM_CAMERA_INDX:
+        #     for zone in self.zone_polygons:
+        #         if zone.camera_id == BOTTOM_CAMERA_INDX and zone.PolyZone.current_count > zone.last_count:
+        #             # update the last_count to the current count
+        #             # so that next time we can trigger upon new detections in a zone
+        #             bool_trigger = True
+        #         zone.last_count = zone.PolyZone.current_count
+
         # If objects were detected from the top camera, set the bottom camera trigger flag as well
         if bool_trigger:
             self.detection_trigger_flag[BOTTOM_CAMERA_INDX] = True    
 
         return bool_trigger
+    
+    def add_bottom_violation_text(self, frame, ppe_status, cam_num):
 
-    def annotate_violations(self, frame, violation) -> list:
+
+        if cam_num == 0 and ppe_status["goggles"]=="False":
+            color = (255, 0, 0)
+            text = "Наденьте очки!"
+        elif cam_num == 1 and ppe_status["shoes"]=="False":
+            color = (255, 0, 0)
+            text = "Смените обувь!"
+        else:
+            color = (5, 108, 34)
+            text = "Отлично!"
+
+        
+        # Convert the OpenCV image format to PIL image format
+        pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(pil_image)
+
+        font_color = (255, 255, 255)  # Red color in BGR format
+        border_thickness = 3
+        font_size = int(80 * 0.8)  # You can adjust this as necessary
+
+        # Load the custom font
+        font_path = '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf'
+
+        # Create a font object with the initial size
+        font = ImageFont.truetype(font_path, size=font_size)
+
+
+        # Calculate the coordinates for the bottom rectangle
+        bottom_rect_top = frame.shape[0] - 80  # Start 80 pixels from the bottom of the frame
+        bottom_rect_bottom = frame.shape[0]    # Go until the bottom of the frame
+        bottom_rect_left = 0                   # Start from the leftmost part of the frame
+        bottom_rect_right = frame.shape[1]     # End at the rightmost part of the frame
+        
+        # Draw the rectangle with red background and 1px black border
+        draw.rectangle([bottom_rect_left, bottom_rect_top, bottom_rect_right, bottom_rect_bottom], fill=color, outline='white', width=border_thickness)
+
+        text_width, text_height = draw.textsize(text, font=font)
+        text_x = (frame.shape[1] - text_width) / 2
+        text_y = bottom_rect_top + (80 - text_height) / 2
+        draw.text((text_x, text_y), text, font=font, fill=font_color)
+
+        # Convert PIL image format back to OpenCV image format
+        frame = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+        return frame
+
+    def annotate_violations(self, frame, violation, cam_num) -> list:
         """
         NOT TESTED
         """
@@ -250,22 +305,21 @@ class TennecoInferenceSystem(InferenceSystem):
         if violation["class_id"] == GOGGLES_CLASS or violation["class_id"] == BOOTS_CLASS:
             text = 'Отлично!'
             #green color
-            color = (0, 255, 0)
-        elif violation["class_id"] == NO_GOGGLES_CLASS:
+            color = (5, 108, 34)
+        elif violation["class_id"] == NO_GOGGLES_CLASS and cam_num == TOP_CAMERA_INDX:
             text = 'Очки!'
             # red color in RGB
             color = (255, 0, 0)
-        elif violation["class_id"] == NO_BOOTS_CLASS:
+        elif violation["class_id"] == NO_BOOTS_CLASS and cam_num == BOTTOM_CAMERA_INDX:
             text = 'Обувь!'
             # red color in RGB
             color = (255, 0, 0)
 
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.5
+        # font_scale = 0.5
         font_color = (255, 255, 255)  # Red color in BGR format
         box_color = color
         line_thickness = 2
-        font_thickness = 1
+        # font_thickness = 1
 
         # Get the bounding box coordinates
         # Example usage:
@@ -278,10 +332,10 @@ class TennecoInferenceSystem(InferenceSystem):
 
 
         # Pad the bbx by 10px on each side, but make sure it doesn't go out of the frame
-        x_min = max(0, x_min - 10)
-        y_min = max(0, y_min - 10)
-        x_max = min(out_w, x_max + 10)
-        y_max = min(out_h, y_max + 10)
+        x_min = max(0, x_min - 20)
+        y_min = max(0, y_min - 20)
+        x_max = min(out_w, x_max + 20)
+        y_max = min(out_h, y_max + 20)
         # print(f"FINAL: x_min = {x_min}, y_min = {y_min}, x_max = {x_max}, y_max = {y_max}, box_color = {box_color}, line_thickness = {line_thickness}")
       
 
@@ -379,11 +433,6 @@ class TennecoInferenceSystem(InferenceSystem):
         NOT TESTED
         """
 
-        """
-        NOTES
-        1) Ask Ilya about hard coding the camera's index to be able to control
-           which camera is getting consecutive frames
-        """
         
         # After N consecutive frames collected, check what was the most common detection for each object
         corrected_violations = []
@@ -500,12 +549,18 @@ class TennecoInferenceSystem(InferenceSystem):
                 if all(self.ready_to_send) and any(len(cam_violations) > 0 for cam_violations in self.violation_to_server[TOP_CAMERA_INDX]):
                     self.system_send()
                     
+                    
                     if self.save:
                         print("##### Saving raw frames to disk #####")
                         # Syntax:  save_frames(frame, camera_num, detected_violations, save_type='raw/anotated')
                         [self.save_frames(frame,  i, detections, save_type='raw') for i in range(len(self.array_for_frames)) for frame,detections in zip(self.array_for_frames[i], self.detections_array[i])]
             # Now reset the arrays if both are done collecting the N frames
             if all(self.ready_to_send):
+                # Reset the trigger flag as well so we can have another trigger action
+                # for i in range(len(self.detection_trigger_flag)):
+                #     self.detection_trigger_flag = False
+
+
                 if self.data_gather_only:
                     print("##### Saving frames to disk #####")
                     [self.save_frames(frame,  i) for i in range(len(self.array_for_frames)) for frame in self.array_for_frames[i]]
@@ -521,6 +576,9 @@ class TennecoInferenceSystem(InferenceSystem):
                     print("\n######## CLEARED MAIN ARRAYS ########")
                     #Print how logn it took to execute using info from self.trigger_action_start_timer
                     print(f"\n######## It took {datetime.datetime.now() - self.trigger_action_start_timer} seconds to execute trigger_action ########\n")
+
+
+
 
 
 
@@ -607,6 +665,8 @@ class TennecoInferenceSystem(InferenceSystem):
         # self.array_for_frames has the structure of:
         # [[],[]...], [[],[],...] where first list is cam0 and second list is cam1
         # so for each cam we choose a frame to send
+
+        cam_num=0#using this to distinguish whther we are annotating shoes or goggles
         for frame_arr, violations in zip(self.array_for_frames, self.violation_to_server):
             # frames_to_send.append(frame_arr[violation["frame_num"]])
             num_violations = len(violations)
@@ -621,8 +681,11 @@ class TennecoInferenceSystem(InferenceSystem):
             annotated_frame = frame_arr[frame_num].copy()
             # detection_bboxes = [violation['bbox'] for violation in violations]
             for violation in violations:
-                annotated_frame = self.annotate_violations(annotated_frame, violation)
+                annotated_frame = self.annotate_violations(annotated_frame, violation, cam_num)
+
+            annotated_frame = self.add_bottom_violation_text(annotated_frame, json.loads(ppe_status), cam_num)
             frames_to_send.append(annotated_frame)
+            cam_num+=1 #using this to distinguish whther we are annotating shoes or goggles
 
 
         frame_to_send = np.hstack((frames_to_send[TOP_CAMERA_INDX], frames_to_send[BOTTOM_CAMERA_INDX]))
@@ -689,7 +752,8 @@ class FrameProcessing():
             ### Assuming masks[0] is the further zone, masks[1] is the closer zone ###
 
             # checking goggles/no_goggles in the two zone in the top camera
-            further_zone_detections = current_detections[self.system.masks[0] & np.isin(current_detections.class_id, goggle_classes_set)]
+            further_zone_detections = current_detections[np.isin(current_detections.class_id, goggle_classes_set)]
+            # further_zone_detections = current_detections[self.system.masks[0] & np.isin(current_detections.class_id, goggle_classes_set)]
             closer_zone_detections = current_detections[self.system.masks[1] & np.isin(current_detections.class_id, goggle_classes_set)]
             
             # if self.system.debug:
