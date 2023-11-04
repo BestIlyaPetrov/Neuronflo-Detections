@@ -693,12 +693,13 @@ class TennecoInferenceSystem(InferenceSystem):
             print("##### Saving annotated frames to disk #####")
             self.save_frames(frame_to_send, save_type='annotated')
         
-
+        """
         # right before sending, set all involved track_ids to "EXITING" status
         for violation in self.violation_to_server[TOP_CAMERA_INDX]:
             # print(f"Setting track_id {violation['track_id']} to EXITING")
             # print(self.tracker_id_side_entered[TOP_CAMERA_INDX][violation["track_id"]][0])
             self.tracker_id_side_entered[TOP_CAMERA_INDX][violation["track_id"]][0] = "EXITING"
+        """
         
         link = "api/event_update"
         if self.send_to_portal:
@@ -752,8 +753,8 @@ class FrameProcessing():
             ### Assuming masks[0] is the further zone, masks[1] is the closer zone ###
 
             # checking goggles/no_goggles in the two zone in the top camera
-            further_zone_detections = current_detections[np.isin(current_detections.class_id, goggle_classes_set)]
-            # further_zone_detections = current_detections[self.system.masks[0] & np.isin(current_detections.class_id, goggle_classes_set)]
+            # further_zone_detections = current_detections[np.isin(current_detections.class_id, goggle_classes_set)]
+            further_zone_detections = current_detections[~self.system.masks[1] & np.isin(current_detections.class_id, goggle_classes_set)]
             closer_zone_detections = current_detections[self.system.masks[1] & np.isin(current_detections.class_id, goggle_classes_set)]
             
             # if self.system.debug:

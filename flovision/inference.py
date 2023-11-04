@@ -10,6 +10,7 @@ import json
 import datetime
 import time
 import os
+import random
 
 import supervision as sv
 from supervision import Detections
@@ -32,8 +33,8 @@ from utils.torch_utils import select_device, smart_inference_mode
 
 
 # Initialize some constants
-BYTETRACKER_MATCH_THRESH = 0.95
-CONFIDENCE_THRESH = 0.2
+BYTETRACKER_MATCH_THRESH = 0.8
+CONFIDENCE_THRESH = 0.45
 
 # Run method params
 NUM_CONSECUTIVE_FRAMES = 2
@@ -89,7 +90,6 @@ class InferenceSystem:
         print(f"server_IP: {server_IP}")
         print(f"display: {self.display}")
         print(f"save: {self.save}")
-        print(f"save_labels: {self.save_labels}")
         print(f"annotate_raw: {self.annotate_raw}")
         print(f"annotate_violation: {self.annotate_violation}")
         print(f"debug: {self.debug}")
@@ -122,8 +122,8 @@ class InferenceSystem:
         """
 
         if server_IP == "local":
-            self.server_IP = '192.168.177.37'
-            # self.server_IP = findLocalServer()
+            # self.server_IP = '192.168.177.37'
+            self.server_IP = findLocalServer()
         else:
             self.server_IP = server_IP
 
@@ -157,8 +157,8 @@ class InferenceSystem:
 
         if model_type == 'custom':
             # self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True, source=model_source, device='0')
-            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_4.6k_speedy.pt", force_reload=True, source=model_source, device='0')
-            self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam1_N_4.6k_speedy.pt", force_reload=True, source=model_source, device='0')
+            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_5.8k_speedy.pt", force_reload=True, source=model_source, device='0')
+            self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam1_N_5.8k_speedy.pt", force_reload=True, source=model_source, device='0')
             # self.model3 = torch.hub.load(model_directory, model_type, path="custom_models/yolov5n.pt", force_reload=True, source=model_source, device='0')
             print("Loaded custom models.")
         else:
@@ -184,6 +184,10 @@ class InferenceSystem:
 
         # Create ByteTracker objects for each camera feed
         self.trackers = [sv.ByteTrack(match_thresh=BYTETRACKER_MATCH_THRESH) for i in range(num_devices)]
+        
+        # Sometimes bytetrack drops detections, so we remedy by assigning custom track id for just that frame (eventually bytetracker takes over correctly)
+        self.fallback_track_id = fallBackTrackIdCounter()
+        # print(self.fallback_track_id.increment()) 
 
         # Set frame params
         self.frame_width = video_res[0]
@@ -223,12 +227,14 @@ class InferenceSystem:
             self.recorder = Recorder(system=self)
         
 
-
+    """
     def ByteTracker_implementation(self, detections):
         # byteTracker is the sv.ByteTrack() object 
         new_detections = []
-        if len(detections) != 0:
+        if len(detections) > 0:
             new_detections = self.trackers[self.camera_num].update_with_detections(detections)
+            print(f"#### new_detections, straight from ByteTrack: {new_detections}")
+
             #Print both to compare
             #Sort both detections and new_detections based on confidence scores
             sorted_original_indices = np.argsort(detections.confidence)
@@ -238,7 +244,45 @@ class InferenceSystem:
             # Update the class_ids in new_detections based on this mapping
             for new_idx, original_idx in index_mapping.items():
                 new_detections.class_id[new_idx] = detections.class_id[original_idx]
-        return new_detections
+            return new_detections
+
+
+        else:
+            return detections
+    """
+
+    def ByteTracker_implementation(self, detections):
+        # byteTracker is the sv.ByteTrack() object 
+        new_detections = []
+        
+        if len(detections) > 0:
+            new_detections = self.trackers[self.camera_num].update_with_detections(detections)
+            print(f"#### Straight from ByteTrack: {new_detections}")
+
+            if len(new_detections) > 0 :
+                # Map confidence to tracker_id for new_detections
+                confidence_to_tracker_id = dict(zip(new_detections.confidence, new_detections.tracker_id))
+            else:
+                confidence_to_tracker_id  ={}
+
+            # Update the tracker_ids in original detections based on confidence
+            # detections.tracker_id = np.array([confidence_to_tracker_id[conf] if conf in confidence_to_tracker_id else None for conf in detections.confidence])
+            detections.tracker_id = np.array([confidence_to_tracker_id.get(conf, self.fallback_track_id.increment()) for conf in detections.confidence])
+            # tracker_ids = []
+            # for conf in detections.confidence:
+            #     if conf in confidence_to_tracker_id:to
+            #         tracker_ids.append(confidence_to_tracker_id[conf])
+            #     else:
+                    
+            #         tracker_ids.append(self.fallback_track_id.increment())
+
+            # detections.tracker_id = np.array(tracker_ids)
+
+            return detections
+
+        else:
+            return detections
+
 
     def stop(self):
         """
@@ -552,7 +596,9 @@ class InferenceSystem:
                         print("###### Detections after ByteTrack: ", self.detections)
                     else:
                         # put the detctions through the deafault bytetracker to keep it alive with frame numbers
-                        self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
+                        # self.detections = self.trackers[self.camera_num].update_with_detections(self.detections)
+                        self.detections = self.ByteTracker_implementation(detections=self.detections)
+
                         # If there are no detections, check if the timer has exceeded 5 minutes
                         if time.time() - last_detection_time > BYTETRACKER_FULL_RESET_TIMEOUT * 60:
                             # Reinitialize self.trackers if the timer has exceeded 5 minutes
@@ -770,3 +816,14 @@ class Violation():
     def Get_Timestamp(self, violation_code) -> datetime:
         index = self.violation_codes.index(violation_code)
         return self.timestamps[index]
+
+
+class fallBackTrackIdCounter:
+    def __init__(self):
+        self.value = 2000  # Initialize with 1000 so the first call to increment gives 1001
+        
+    def increment(self):
+        self.value += 1
+        if self.value > 3000:
+            self.value = 2001
+        return self.value

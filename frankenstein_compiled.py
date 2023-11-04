@@ -12,7 +12,7 @@ video_res = [640, 640]
 # NMS paparms
 # conf_thres = 0.5
 iou_thres = 0.7
-agnostic_nms= False
+agnostic_nms= True
 # classes = None ## all classes are detected
 
 #Image Annotation Params
