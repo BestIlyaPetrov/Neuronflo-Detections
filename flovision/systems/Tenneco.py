@@ -210,13 +210,16 @@ class TennecoInferenceSystem(InferenceSystem):
 
         if not all_class_ids:
             return []
+        
+        # Took out smoothing function - relying purely on the model now
+        #If a single boot is incorrect, it must warn the worker
+        
+        # most_prevalent_class_id = Counter(all_class_ids).most_common(1)[0][0]
 
-        most_prevalent_class_id = Counter(all_class_ids).most_common(1)[0][0]
-
-        # Update all class_ids in the violations_array
-        for sublist in violations_array:
-            for detection in sublist:
-                detection['class_id'] = most_prevalent_class_id
+        # # Update all class_ids in the violations_array
+        # for sublist in violations_array:
+        #     for detection in sublist:
+        #         detection['class_id'] = most_prevalent_class_id
 
         return violations_array
 
@@ -754,8 +757,8 @@ class FrameProcessing():
 
             # checking goggles/no_goggles in the two zone in the top camera
             # further_zone_detections = current_detections[np.isin(current_detections.class_id, goggle_classes_set)]
-            further_zone_detections = current_detections[~self.system.masks[1] & np.isin(current_detections.class_id, goggle_classes_set)]
-            closer_zone_detections = current_detections[self.system.masks[1] & np.isin(current_detections.class_id, goggle_classes_set)]
+            further_zone_detections = current_detections[~self.system.masks[1]]# & np.isin(current_detections.class_id, goggle_classes_set)]
+            closer_zone_detections = current_detections[self.system.masks[1]]# & np.isin(current_detections.class_id, goggle_classes_set)]
             
             # if self.system.debug:
             #     #Print the detections in each zone

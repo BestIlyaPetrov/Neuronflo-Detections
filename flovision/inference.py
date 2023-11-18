@@ -34,7 +34,7 @@ from utils.torch_utils import select_device, smart_inference_mode
 
 # Initialize some constants
 BYTETRACKER_MATCH_THRESH = 0.8
-CONFIDENCE_THRESH = 0.45
+CONFIDENCE_THRESH = 0.59
 
 # Run method params
 NUM_CONSECUTIVE_FRAMES = 2
@@ -157,8 +157,8 @@ class InferenceSystem:
 
         if model_type == 'custom':
             # self.model = torch.hub.load(model_directory, model_type, path=model_name, force_reload=True, source=model_source, device='0')
-            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_5.8k_speedy.pt", force_reload=True, source=model_source, device='0')
-            self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam1_N_5.8k_speedy.pt", force_reload=True, source=model_source, device='0')
+            self.model = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam0_N_6.8k_speedy.pt", force_reload=True, source=model_source, device='0')
+            self.model2 = torch.hub.load(model_directory, model_type, path="custom_models/tenneco_cam1_N_6.8k_speedy.pt", force_reload=True, source=model_source, device='0')
             # self.model3 = torch.hub.load(model_directory, model_type, path="custom_models/yolov5n.pt", force_reload=True, source=model_source, device='0')
             print("Loaded custom models.")
         else:
