@@ -1,5 +1,6 @@
 from threading import Thread, Lock
 import cv2
+
 # print("CV2 INFO:", cv2.getBuildInformation())
 import numpy as np
 import json
@@ -8,11 +9,13 @@ from pathlib import Path
 import math, time
 
 
-def upscale_coordinates(x_min, y_min, x_max, y_max, input_resolution, output_resolution):
+def upscale_coordinates(
+    x_min, y_min, x_max, y_max, input_resolution, output_resolution
+):
     # Unpack input and output resolutions
-    input_width, input_height   = input_resolution
-    output_width, output_height   = output_resolution
-    # print 
+    input_width, input_height = input_resolution
+    output_width, output_height = output_resolution
+    # print
     print("INPUT RESOLUTION:", input_resolution)
     print("OUTPUT RESOLUTION:", output_resolution)
 
@@ -27,30 +30,21 @@ def upscale_coordinates(x_min, y_min, x_max, y_max, input_resolution, output_res
     upscaled_y_max = int(round(y_max * height_scale))
     # print both coords
 
-
     return upscaled_x_min, upscaled_y_min, upscaled_x_max, upscaled_y_max
 
 
-
-
-
-
-
-
 def adjust_color(img):
-
     # Convert to YUV color space
     yuv = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
 
     # Apply CLAHE to the Y channel (luminance)
     clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(4, 4))
-    yuv[:,:,0] = clahe.apply(yuv[:,:,0])
+    yuv[:, :, 0] = clahe.apply(yuv[:, :, 0])
 
     # Convert back to BGR color space
     processed_frame = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR)
-    
-    return processed_frame   
 
+    return processed_frame
 
 
 """
@@ -78,14 +72,43 @@ Example config.json file:
 
 
 """
-def get_camera_src(quantity=1):
-# Get the full path of the current script
+
+
+# write a function that returns crop coordinates for a given camera if present in the config file
+def get_crop_coordinates(cam_num):
+    # Get the full path of the current script
+    script_path = os.path.abspath(__file__)
+    script_directory = os.path.dirname(script_path)
+
+    # Initialize the cameras
+    crop_coordinates = []
+    with open(Path(script_directory) / "video-config.json", "r") as f:
+        config = json.load(f)
+    for camera in config["cameras"]:
+        # Add a check for whetehr "crop" exists in the json file
+        if "crop" in camera:
+            crop_coordinates.append(
+                (
+                    camera["crop"]["x1"],
+                    camera["crop"]["y1"],
+                    camera["crop"]["x2"],
+                    camera["crop"]["y2"],
+                )
+            )
+        else:
+            crop_coordinates.append(None)
+
+    return crop_coordinates[cam_num]
+
+
+def get_camera_src():
+    # Get the full path of the current script
     script_path = os.path.abspath(__file__)
 
     # Get the directory containing the current script
     script_directory = os.path.dirname(script_path)
     devices = []
-    with open(Path(script_directory) / 'video-config.json', 'r') as f:
+    with open(Path(script_directory) / "video-config.json", "r") as f:
         config = json.load(f)
 
     for camera in config["cameras"]:
@@ -94,7 +117,9 @@ def get_camera_src(quantity=1):
             username = camera.get("username")
             password = camera.get("password")
             port = camera.get("port", 554)  # Default to 554 if port is not provided
-            path = camera.get("path", "")  # Default to empty string if path is not provided
+            path = camera.get(
+                "path", ""
+            )  # Default to empty string if path is not provided
 
             # Check if channelNo and typeNo are provided, and format the path accordingly
             if "channelNo" in camera and "typeNo" in camera:
@@ -104,15 +129,15 @@ def get_camera_src(quantity=1):
 
             # Construct video URL based on the presence of username and password
             if username and password:
-                video_url = f'rtsp://{username}:{password}@{ip}:{port}{path}'
+                video_url = f"rtsp://{username}:{password}@{ip}:{port}{path}"
             else:
-                video_url = f'rtsp://{ip}:{port}{path}'
+                video_url = f"rtsp://{ip}:{port}{path}"
 
             devices.append(video_url)
         elif camera["type"] == "usb":
-            usb_devices = glob.glob('/dev/video*')
+            usb_devices = glob.glob("/dev/video*")
             if not usb_devices:
-                raise ValueError('No usb video devices found')
+                raise ValueError("No usb video devices found")
             usb_devices.sort()
             for cam in usb_devices:
                 if cam[-1] in devices:
@@ -120,10 +145,9 @@ def get_camera_src(quantity=1):
                 else:
                     devices.append(cam[-1])
                     break
-            
-
 
     return devices
+
 
 # def get_device_indices(quantity = 1):
 #     # Determine the two sources to use for cameras:
@@ -154,6 +178,7 @@ def get_camera_src(quantity=1):
 #             cap_index.append(int(devices[i][-1]))
 #         return cap_index
 
+
 def draw_border(frame, compliant, border_width=5):
     """
     Draw a red or green border around a given frame.
@@ -165,8 +190,13 @@ def draw_border(frame, compliant, border_width=5):
 
     height, width, _ = frame.shape
     bordered_frame = cv2.copyMakeBorder(
-        frame, border_width, border_width, border_width, border_width,
-        cv2.BORDER_CONSTANT, value=color
+        frame,
+        border_width,
+        border_width,
+        border_width,
+        border_width,
+        cv2.BORDER_CONSTANT,
+        value=color,
     )
     return bordered_frame
     # return bordered_frame[border_width : height + border_width, border_width : width + border_width]
@@ -192,15 +222,16 @@ def region_dimensions(frame_size, center, width, height):
 
     return zone_polygon
 
+
 def variance_of_laplacian(image):
-	# compute the Laplacian of the image and then return the focus
-	# measure, which is simply the variance of the Laplacian
-	return cv2.Laplacian(image, cv2.CV_64F).var()
+    # compute the Laplacian of the image and then return the focus
+    # measure, which is simply the variance of the Laplacian
+    return cv2.Laplacian(image, cv2.CV_64F).var()
+
 
 def least_blurry_image_indx(frame_list):
-
     blur_val_list = []
-    cnt=0
+    cnt = 0
     for frame in frame_list:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         fm = variance_of_laplacian(gray)
@@ -212,102 +243,83 @@ def least_blurry_image_indx(frame_list):
     # return np.argsort(blur_val_list)[::-1]
 
 
+def map_rotation_value(cam_num):
+    rotation_mapping = {
+        "ROTATE_90_CLOCKWISE": cv2.ROTATE_90_CLOCKWISE,
+        "ROTATE_180": cv2.ROTATE_180,
+        "ROTATE_90_COUNTERCLOCKWISE": cv2.ROTATE_90_COUNTERCLOCKWISE,
+    }
 
-"""
-class vStream:
-    def __init__(self, src, cam_num, resolution):
-        print("Opening camera at link: ", src)
-        self.width, self.height = resolution
+    # Get the full path of the current script
+    script_path = os.path.abspath(__file__)
+    script_directory = os.path.dirname(script_path)
 
-        # Constructing a GStreamer pipeline for hardware-accelerated decoding (assuming src is an RTSP link)
-        gstreamer_pipeline = (
-            f'rtspsrc location={src} latency=50 ! rtph264depay ! h264parse ! nvv4l2decoder ! '
-            'videoconvert ! video/x-raw, format=(string)BGRx ! '
-            f'videoscale ! video/x-raw, width={self.width}, height={self.height} ! appsink'
-        )
-        # gstreamer_pipeline = (
-        #     f'rtspsrc location={src} latency=50 ! rtph265depay ! h265parse ! nvv4l2decoder ! '
-        #     'videoconvert ! video/x-raw, format=(string)BGRx ! '
-        #     f'videoscale ! video/x-raw, width={self.width}, height={self.height} ! appsink'
-        # )
-        self.capture = cv2.VideoCapture(gstreamer_pipeline, cv2.CAP_GSTREAMER)
-        
-        # Check if capture was successful
-        if not self.capture.isOpened():
-            print("Error: Camera not opened")
-            print("Error Message:", self.capture.getExceptionMessage())
-            raise ValueError("Unable to open camera")
+    # Initialize the cameras
+    crop_coordinates = []
+    with open(Path(script_directory) / "video-config.json", "r") as f:
+        config = json.load(f)
 
-        self.src = cam_num
-        self.new_frame_available = False
-        self.frame = None
-        self.frame_resized = None
-        self.lock = Lock()
-        self.thread = Thread(target=self.update, args=())
-        self.thread.daemon = True
-        self.thread.start()
-        
-    def update(self):
-        while True:
-            ret, frame = self.capture.read()
-            if not ret:
-                print(f"Failed to grab frame from source {self.src}")
-                break
-            self.lock.acquire()
-            self.frame = frame
-            self.frame_resized = cv2.resize(frame, (self.width, self.height))
-            self.new_frame_available = True
-            self.lock.release()
+    camera = config["cameras"][cam_num]
+    # Add a check for whetehr "crop" exists in the json file
+    if "rotation_type" in camera:
+        rotation_type_str = camera["rotation_type"]
+    else:
+        rotation_type_str = None
 
-    def getFrame(self):
-        self.lock.acquire()
-        new_frame = self.new_frame_available
-        resized = self.frame_resized
-        original = self.frame
-        if new_frame:
-            self.new_frame_available = False
-        self.lock.release()
-        return (new_frame, resized, original)
-"""
+    rotation_type = rotation_mapping.get(rotation_type_str, None)
 
+    return rotation_type
 
+def initialize_cameras(config_file_path) -> list:
+    with open(config_file_path, "r") as f:
+        config = json.load(f)
+    num_cameras = len(config.get("cameras", []))
+    return [vStream(i) for i in range(num_cameras)]
 
 class vStream:
-    def __init__(self, src, cam_num, resolution, crop_coordinates, rotation_type=None):
+    def __init__(self, cam_num):
+        src = get_camera_src()[cam_num]
         print("Opening camera at link: ", src)
-        self.rotation_type = rotation_type
-        self.inference_width = resolution[0]
-        self.inference_height = resolution[1]
+
+        self.rotation_type = map_rotation_value(cam_num)
         self.src_link = src
         self.src = cam_num
         self.new_frame_available = False
         self.frame = None
-        self.frame_resized= None
+        self.frame_resized = None
         self.running = False
         self.kill_update_loop = False
-        self.crop_coordinates = crop_coordinates
+        if get_crop_coordinates(cam_num) is not None:
+            self.crop_coordinates = get_crop_coordinates(cam_num)
+        else:
+            self.crop_coordinates = None
 
-        if self.rotation_type not in [cv2.ROTATE_90_CLOCKWISE,cv2.ROTATE_90_COUNTERCLOCKWISE,cv2.ROTATE_180]:
+        if self.rotation_type not in [
+            cv2.ROTATE_90_CLOCKWISE,
+            cv2.ROTATE_90_COUNTERCLOCKWISE,
+            cv2.ROTATE_180,
+        ]:
             self.rotation_type = None
             print("Rotation type not supported. Defaulting to no rotation")
-        
-        self.capture=cv2.VideoCapture(src)
+
+        self.capture = cv2.VideoCapture(src)
         if self.capture.isOpened():
             self.width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
             self.height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fps = self.capture.get(cv2.CAP_PROP_FPS)  # warning: may return 0 or nan
-            self.fps = max((fps if math.isfinite(fps) else 0) % 100, 0) or 30  # 30 FPS fallback
-            print(f'Success frames {self.width}x{self.height} at {self.fps:.2f} FPS')
+            self.fps = (
+                max((fps if math.isfinite(fps) else 0) % 100, 0) or 30
+            )  # 30 FPS fallback
+            print(f"Success frames {self.width}x{self.height} at {self.fps:.2f} FPS")
 
             self.thread = Thread(target=self.update, args=())
-            self.thread.daemon=True
+            self.thread.daemon = True
             self.running = True
             self.thread.start()
         else:
             self.reconnect()
-        
-    def reconnect(self):
 
+    def reconnect(self):
         try:
             """Attempt to reconnect the camera."""
             print(f"Attempting to reconnect cam {self.src} at {self.src_link}...")
@@ -318,8 +330,12 @@ class vStream:
                 self.width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
                 self.height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 fps = self.capture.get(cv2.CAP_PROP_FPS)  # warning: may return 0 or nan
-                self.fps = max((fps if math.isfinite(fps) else 0) % 100, 0) or 30  # 30 FPS fallback
-                print(f'Success frames {self.width}x{self.height} at {self.fps:.2f} FPS')
+                self.fps = (
+                    max((fps if math.isfinite(fps) else 0) % 100, 0) or 30
+                )  # 30 FPS fallback
+                print(
+                    f"Success frames {self.width}x{self.height} at {self.fps:.2f} FPS"
+                )
                 self.running = True
             else:
                 raise ValueError(f"Unable to open camera {self.src} at {self.src_link}")
@@ -327,10 +343,9 @@ class vStream:
             print(f"Can't reconnect because {e}")
             self.reconnect()
 
-
     def update(self):
-        fps_cnt = 0 
-        cnt=0
+        fps_cnt = 0
+        cnt = 0
         start_time = time.time()
         y1, y2, x1, x2 = self.crop_coordinates
         while True:
@@ -339,12 +354,16 @@ class vStream:
                     getframe = self.capture.read()
                     if self.rotation_type is None:
                         self.frame = getframe[1]
-                    else: 
-                        self.frame = cv2.rotate(getframe[1],self.rotation_type)
+                    else:
+                        self.frame = cv2.rotate(getframe[1], self.rotation_type)
 
                     # self.frame_resized = cv2.resize(self.frame, (self.inference_width, self.inference_height))
-                    
-                    self.frame_resized = self.frame[int(y1):int(y2), int(x1):int(x2)]
+                    if self.crop_coordinates is not None:
+                        self.frame_resized = self.frame[
+                            int(y1) : int(y2), int(x1) : int(x2)
+                        ]
+                    else:
+                        self.frame_resized = self.frame
 
                     self.new_frame_available = True
                     # fps_cnt += 1
@@ -360,12 +379,11 @@ class vStream:
                 except:
                     if cnt < 1:
                         print(f"Frames can't be read from cam {self.src}")
-                        cnt +=1
+                        cnt += 1
                         self.reconnect()
                     continue
             if self.kill_update_loop:
                 break
-
 
     def getFrame(self):
         if self.frame_resized is None:
@@ -375,23 +393,12 @@ class vStream:
             return (True, self.frame_resized)
         else:
             return (False, self.frame_resized)
-    # def getFrame(self):
-    #     if self.frame_resized is None:
-    #         return (False, self.frame_resized, self.frame)
-    #     if self.new_frame_available:
-    #         self.new_frame_available = False
-    #         return (True, self.frame_resized, self.frame)
-    #     else:
-    #         return (False, self.frame_resized, self.frame)
-        
+
     def isFrameAvailable(self):
         return self.new_frame_available
-    
+
     def stopAndRelease(self):
         self.running = False
         self.kill_update_loop = True
         self.thread.join()
         self.capture.release()
-        
-
-

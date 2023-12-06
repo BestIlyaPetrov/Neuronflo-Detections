@@ -21,7 +21,7 @@ import collections
 from pathlib import Path
 
 from .bbox_gui import create_bounding_boxes, load_bounding_boxes
-from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_camera_src, adjust_color
+from .video import draw_border, region_dimensions, vStream, least_blurry_image_indx, get_camera_src, adjust_color, initialize_cameras
 from .comms import sendImageToServer
 from .utils import get_highest_index, findLocalServer
 from .jetson import Jetson
@@ -127,17 +127,12 @@ class InferenceSystem:
         else:
             self.server_IP = server_IP
 
-        cap_src = get_camera_src(quantity = num_devices)
+            # Get the full path of the current script
+        script_path = os.path.abspath(__file__)
+        script_directory = os.path.dirname(script_path)
 
-        
-        # Initialize the cameras
-        crop_coordinates = []
-        #cam0
-        crop_coordinates.append((404.0, 1044.0, 77.0, 717.0))
-        #cam1
-        crop_coordinates.append((549.0, 1189.0, 76.0, 716.0))
-
-        self.cams = [vStream(cap_src[i], i, video_res, crop_coordinates[i], rotation_type=cam_rotation_type) for i in range(num_devices)]
+        config_file_path = Path(script_directory) / "video-config.json"
+        self.cams = initialize_cameras(config_file_path)
 
         # Initialize the jetson's peripherals and GPIO pins
         self.jetson = Jetson()
@@ -149,7 +144,7 @@ class InferenceSystem:
         for i, cam in enumerate(self.cams):
             coordinates_set = func(cam)
             for j, coordinates in enumerate(coordinates_set):
-                print(f"Created zone (i, j, coordinates, tuple(video_res) = {i}, {j}, {coordinates}, {tuple(video_res)}")
+                print(f"Created zone (i, j, coordinates, tuple(video_res) = {i}, {j}, \n{coordinates}, \n{tuple(video_res)}")
                 zone_polygons.append(Zone(i, j, coordinates, tuple(video_res)))
         
         # Initialize the zone polygons - list of custom zone objects defined in Zone() at the bottom
